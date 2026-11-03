@@ -1,0 +1,45 @@
+# Gradle and Kotlin caches
+.gradle/
+.kotlin/
+**/build/
+out/
+local.properties
+
+# IDE metadata
+.idea/
+.fleet/
+.vscode/
+*.iml
+
+# Generated distributions and downloaded build cache
+release/
+
+# Accidental JavaScript dependency trees
+node_modules/
+
+# Native build outputs
+.externalNativeBuild/
+.cxx/
+
+# Logs, JVM crash reports and heap dumps
+*.log
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# Test and tooling captures
+captures/
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Apple/Xcode user-local state retained by the shared KMP template
+xcuserdata/
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+**/xcshareddata/WorkspaceSettings.xcsettings

@@ -1,0 +1,135 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.gradle.api.tasks.Exec
+
+plugins {
+    alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.composeMultiplatform)
+    alias(libs.plugins.composeCompiler)
+}
+
+dependencies {
+    implementation(project(":shared"))
+
+    implementation(compose.desktop.currentOs)
+    implementation(libs.compose.material3)
+    implementation(libs.kotlinx.coroutinesSwing)
+
+    implementation(libs.compose.uiToolingPreview)
+}
+
+val hhClickerVersion = providers.gradleProperty("hhClickerVersion")
+val nightly = providers.gradleProperty("nightly").map { it != "false" }.getOrElse(false)
+val distributionVersion = if (nightly) providers.gradleProperty("nightlyVersion").getOrElse(
+    hhClickerVersion.get().split('.').let { "${it[0]}.${it[1]}.${it[2].toInt() + 1}" }
+) else hhClickerVersion.get()
+val distributionSuffix = if (nightly) "-nightly" else ""
+require(distributionVersion.matches(Regex("\\d+\\.\\d+\\.\\d+"))) { "Distribution version must have three numeric components" }
+val installerResourcesRoot = layout.buildDirectory.dir("installer-resources")
+val windowsInstallerOutput = layout.buildDirectory.dir("compose/binaries/main/installer")
+val windowsApplicationImage = layout.buildDirectory.dir("compose/binaries/main/app/HH Clicker Launcher")
+val releaseDirectory = rootProject.layout.projectDirectory.dir("releases/${hhClickerVersion.get()}")
+val releaseCatalog = rootProject.layout.projectDirectory.dir("releases")
+val releaseDefinition = releaseDirectory.file("release.json")
+val releaseNotes = releaseDirectory.file("notes.ru.md")
+
+val prepareInstallerPayload by tasks.registering(Exec::class) {
+    group = "distribution"
+    description = "Stages Git-filtered HH Clicker services and a production Browser Agent runtime"
+
+    val stagingScript = rootProject.layout.projectDirectory.file("installer/prepare-payload.ps1")
+    val workspaceRoot = rootProject.layout.projectDirectory.dir("..").asFile
+    val destination = installerResourcesRoot.map { it.dir("common").asFile }
+
+    inputs.files(stagingScript, releaseDefinition, releaseNotes)
+    inputs.dir(releaseCatalog)
+    outputs.dir(installerResourcesRoot)
+    outputs.upToDateWhen { false }
+
+    commandLine(listOf(
+        "powershell.exe",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        stagingScript.asFile.absolutePath,
+        "-WorkspaceRoot",
+        workspaceRoot.absolutePath,
+        "-Destination",
+        destination.get().absolutePath,
+        "-Version",
+        distributionVersion,
+        "-ReleaseDefinition",
+        releaseDefinition.asFile.absolutePath,
+        "-ReleaseNotes",
+        releaseNotes.asFile.absolutePath,
+    ) + if (nightly) listOf("-Nightly") else emptyList<String>())
+}
+
+// Compose copies <appResourcesRootDir>/common into $APPDIR/resources. Only distribution tasks build the
+// expensive payload; ordinary run/hotRun must stay fast. The ordering makes the Sync observe fresh staging.
+tasks.matching { it.name == "prepareAppResources" }.configureEach {
+    mustRunAfter(prepareInstallerPayload)
+}
+tasks.matching {
+    it.name == "createDistributable"
+}.configureEach {
+    dependsOn(prepareInstallerPayload)
+    // Compose's jpackage task does not fingerprint our externally staged service tree reliably.
+    outputs.upToDateWhen { false }
+}
+
+val packageWindowsInstaller by tasks.registering(Exec::class) {
+    group = "distribution"
+    description = "Builds the HH Clicker Windows installer with Inno Setup"
+    dependsOn("createDistributable")
+
+    val buildScript = rootProject.layout.projectDirectory.file("installer/build-windows-installer.ps1")
+    val innoScript = rootProject.layout.projectDirectory.file("installer/hh-clicker.iss")
+    val dockerCleanup = rootProject.layout.projectDirectory.file("installer/cleanup-docker.ps1")
+    val updateFiles = rootProject.layout.projectDirectory.file("installer/update-files.ps1")
+
+    inputs.files(buildScript, innoScript, dockerCleanup, updateFiles, releaseDefinition, releaseNotes)
+    inputs.dir(releaseCatalog)
+    inputs.dir(windowsApplicationImage)
+    outputs.file(windowsInstallerOutput.map { it.file("HH-Clicker-Setup-$distributionVersion$distributionSuffix.exe") })
+    outputs.upToDateWhen { false }
+
+    commandLine(
+        "powershell.exe",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        buildScript.asFile.absolutePath,
+        "-ApplicationImage",
+        windowsApplicationImage.get().asFile.absolutePath,
+        "-OutputDirectory",
+        windowsInstallerOutput.get().asFile.absolutePath,
+        "-Version",
+        distributionVersion,
+    )
+}
+
+compose.desktop {
+    application {
+        mainClass = "org.hhclicker.launcher.MainKt"
+
+        nativeDistributions {
+            targetFormats(TargetFormat.Dmg, TargetFormat.Deb)
+            appResourcesRootDir.set(installerResourcesRoot)
+            modules("java.net.http")
+            packageName = "HH Clicker Launcher"
+            packageVersion = distributionVersion
+            description = "Local launcher for HH Clicker"
+            vendor = "HH Clicker"
+
+            windows {
+                iconFile.set(project.file("src/main/resources/hh-clicker.ico"))
+            }
+        }
+    }
+}
