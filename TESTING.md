@@ -37,6 +37,22 @@ Compose App() без контроллера. У desktop entry point нет CLI-�
 данными. Он не создаёт отдельную песочницу. Для разрушительных сценариев нужна отдельная
 тестовая установка; файловый rollback не откатывает изменения БД.
 
+## macOS DMG
+
+Сборка из полного Git checkout с JDK 21+, Node.js и npm:
+
+```bash
+bash ./gradlew :desktopApp:packageDmg -Pnightly -PnightlyVersion=2.1.1 --console=plain
+```
+
+JDK и Gradle должны иметь архитектуру целевого пакета: Intel x64 или Apple Silicon arm64.
+В DMG входят runtime Java и подготовленный Browser Agent, поэтому Git, npm и JDK
+нужны только на машине сборки. Подготовка Unix payload требует Git-репозитории сервисов
+рядом с launcher; копии исходников без `.git` для этой команды недостаточно.
+Минимальная версия пакета — macOS 14. Неподписанная тестовая сборка не нотарифицирована.
+DMG устанавливается переносом приложения в Applications; данные остаются отдельно
+в `~/Library/Application Support/HH Clicker/data`.
+
 ## Инструменты
 
 `tools/generate-icon.ps1` вручную пересоздаёт ICO в desktopApp/src/main/resources.

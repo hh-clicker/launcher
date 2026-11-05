@@ -91,6 +91,31 @@ remain separate later steps.
 
 ## Machine preparation: Docker Desktop
 
+On macOS, `MacDockerPreparer` installs the architecture-specific official DMG and opens Docker Desktop.
+Application presence (`/Applications/Docker.app`), CLI, Compose and Engine readiness are independent facts:
+the installer finishing does not prove the Engine is ready. The runtime monitor repeats full diagnostics
+while the installed application's CLI or Compose is still unavailable, then continues observing the Engine.
+During this interval the setup card offers to open the existing application instead of reinstalling it;
+the user can finish Docker's initial setup while the launcher updates its checks automatically.
+For Docker commands on macOS, `CommandRunner` prepends Docker.app's `Contents/Resources/bin` to the
+child process PATH so Docker can resolve its credential helper even in a GUI session started before
+Docker was installed. This does not modify the user's shell settings or Docker credential configuration.
+Mac Docker commands also default `BUILDX_GIT_INFO=0`: local runtime builds do not need Git provenance
+metadata, and invoking Apple's Git stub would prompt users to install Command Line Tools.
+
+`MacChromePreparer` downloads Google's universal stable PKG for Intel and Apple Silicon after the
+Chrome terms are accepted in the setup card. Before invoking the system installer with macOS
+authorization it checks the package signature, the Google LLC leaf signer and Gatekeeper's verdict.
+It checks the same Chrome location as preflight before downloading, before installation and afterwards.
+Existing Chrome installations are left alone. The temporary package is removed after each attempt;
+environment diagnostics refresh automatically after successful installation.
+
+macOS DMGs use Compose/jpackage with a bundled Java runtime, a stable bundle identifier and an ICNS
+generated from the shared application PNG by system tools. Distribution staging uses the Unix payload
+script on both Linux and macOS; ordinary development runs do not prepare the payload. The package
+requires macOS 14 or later and is built separately for each host architecture. Service data and Docker
+volumes remain outside the replaceable application bundle.
+
 Docker is the second preparation target and reuses the same state machine. `SetupTarget` (`WSL`, `DOCKER`, `CHROME`) says which
 prerequisite a `SetupState` describes, and `SetupStep` includes the Docker stages `DOWNLOADING_DOCKER`,
 `VERIFYING_DOCKER_INSTALLER`, `INSTALLING_DOCKER`, `STARTING_DOCKER`, `WAITING_FOR_DOCKER_ENGINE` and

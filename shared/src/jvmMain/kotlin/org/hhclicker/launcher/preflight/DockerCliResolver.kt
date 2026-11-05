@@ -21,8 +21,11 @@ import org.hhclicker.launcher.runtime.HostPlatformDetector
  */
 class DockerCliResolver(
     private val locate: () -> Path? = {
-        if (HostPlatformDetector.detect() == HostPlatform.WINDOWS) DockerInstallationLocator().locate()?.cliExecutable
-        else null
+        when (HostPlatformDetector.detect()) {
+            HostPlatform.WINDOWS -> DockerInstallationLocator().locate()?.cliExecutable
+            HostPlatform.MACOS -> MacDockerCliLocator().locate()
+            else -> null
+        }
     },
 ) {
     @Volatile

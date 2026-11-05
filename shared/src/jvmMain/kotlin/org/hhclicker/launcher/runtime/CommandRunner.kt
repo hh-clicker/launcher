@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.hhclicker.launcher.model.HostPlatform
 
 data class CommandResult(
     val exitCode: Int?,
@@ -36,7 +37,10 @@ open class CommandRunner {
             ProcessBuilder(arguments)
                 .directory(workingDirectory.toFile())
                 .redirectErrorStream(true)
-                .also { builder -> builder.environment().putAll(environment) }
+                .also { builder ->
+                    builder.environment().putAll(environment)
+                    configureMacDockerEnvironment(arguments.first(), builder.environment(), HostPlatformDetector.detect())
+                }
                 .start()
         } catch (exception: Exception) {
             return@withContext CommandResult(null, exception.message ?: "Не удалось запустить команду")
@@ -73,4 +77,15 @@ open class CommandRunner {
     private companion object {
         const val MAX_OUTPUT_CHARACTERS = 8_000
     }
+}
+
+/** Docker resolves credential helpers through its child's PATH, even when the CLI path is absolute. */
+internal fun configureMacDockerEnvironment(command: String, environment: MutableMap<String, String>, platform: HostPlatform) {
+    if (platform != HostPlatform.MACOS || command.substringAfterLast('/') != "docker") return
+    val dockerBin = "/Applications/Docker.app/Contents/Resources/bin"
+    environment["PATH"] = (listOf(dockerBin) + environment["PATH"].orEmpty().split(':'))
+        .filter(String::isNotBlank).distinct().joinToString(":")
+    // Apple's git stub opens a Command Line Tools installation dialog. Local runtime builds do not
+    // need source-control attestations, so Buildx must not invoke git just to collect that metadata.
+    environment.putIfAbsent("BUILDX_GIT_INFO", "0")
 }

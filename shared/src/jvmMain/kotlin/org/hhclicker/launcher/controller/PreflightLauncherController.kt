@@ -13,6 +13,10 @@ import org.hhclicker.launcher.model.ComponentStatus
 import org.hhclicker.launcher.model.CodexAuthState
 import org.hhclicker.launcher.model.CodexAuthStatus
 import org.hhclicker.launcher.model.DockerDiagnostics
+import org.hhclicker.launcher.model.ChromeInstallationState
+import org.hhclicker.launcher.model.DockerCliState
+import org.hhclicker.launcher.model.DockerComposeState
+import org.hhclicker.launcher.model.DockerDesktopState
 import org.hhclicker.launcher.model.DockerEngineState
 import org.hhclicker.launcher.model.DockerServiceSnapshot
 import org.hhclicker.launcher.model.HostPlatform
@@ -45,8 +49,10 @@ import org.hhclicker.launcher.runtime.WindowsChromePreparer
 import org.hhclicker.launcher.runtime.WindowsDockerPreparer
 import org.hhclicker.launcher.runtime.WindowsWslPreparer
 import org.hhclicker.launcher.runtime.WindowsNodePreparer
-import org.hhclicker.launcher.runtime.LinuxNodePreparer
+import org.hhclicker.launcher.runtime.UnixNodePreparer
 import org.hhclicker.launcher.runtime.LinuxPackagePreparer
+import org.hhclicker.launcher.runtime.MacDockerPreparer
+import org.hhclicker.launcher.runtime.MacChromePreparer
 import org.hhclicker.launcher.runtime.NodePreparationContext
 import org.hhclicker.launcher.runtime.LauncherRuntimeConfiguration
 import org.hhclicker.launcher.runtime.LauncherRuntimeConfigurationStore
@@ -94,7 +100,9 @@ class PreflightLauncherController(
     private val dockerPreparer: WindowsDockerPreparer = WindowsDockerPreparer(),
     private val chromePreparer: WindowsChromePreparer = WindowsChromePreparer(),
     private val nodePreparer: WindowsNodePreparer = WindowsNodePreparer(),
-    private val linuxNodePreparer: LinuxNodePreparer = LinuxNodePreparer(),
+    private val unixNodePreparer: UnixNodePreparer = UnixNodePreparer(),
+    private val macDockerPreparer: MacDockerPreparer = MacDockerPreparer(),
+    private val macChromePreparer: MacChromePreparer = MacChromePreparer(),
     private val linuxPackagePreparer: LinuxPackagePreparer = LinuxPackagePreparer(),
     private val dockerUserSettings: DockerUserSettings = DockerUserSettings(),
 ) : LauncherController {
@@ -168,9 +176,16 @@ class PreflightLauncherController(
     override suspend fun refreshRuntimeState() {
         val before = mutableState.value
         val revisionBeforeInspection = runtimeRevision
+        if (!canRefreshDiagnostics(before)) return
+
+        // Docker Desktop creates its CLI links after the installer exits. An engine-only observation
+        // cannot discover them, so keep rechecking the whole Mac prerequisite until they appear.
+        if (shouldRefreshMacDockerAfterInstall(before)) {
+            refreshEnvironment()
+            return
+        }
         val currentConfiguration = configuration ?: return
         val currentEndpoints = endpoints ?: return
-        if (!canRefreshDiagnostics(before)) return
 
         val reconcile = canRefreshRuntime(before)
         val inspection = if (reconcile) {
@@ -353,6 +368,10 @@ class PreflightLauncherController(
             prepareLinuxPackage(SetupTarget.DOCKER, true)
             return
         }
+        if (mutableState.value.preflight.platform == HostPlatform.MACOS) {
+            prepareMacDocker()
+            return
+        }
         val action = operation.withLock {
             if (mutableState.value.setup.status == SetupStatus.PREPARING) return
             val decided = DockerSetupPlanner.decide(
@@ -406,6 +425,76 @@ class PreflightLauncherController(
         operation.withLock { mutableState.value = mutableState.value.copy(setup = finished) }
     }
 
+    private suspend fun prepareMacChrome(acceptGoogleTerms: Boolean) {
+        operation.withLock {
+            if (mutableState.value.setup.inProgress) return
+            if (mutableState.value.preflight.chrome?.installation == null ||
+                mutableState.value.preflight.chrome?.installation == ChromeInstallationState.CHECK_FAILED) {
+                mutableState.value = mutableState.value.copy(setup = SetupState(SetupStatus.FAILED,
+                    message = "Не удалось определить, установлен ли Chrome. Повторите проверку", target = SetupTarget.CHROME))
+                return
+            }
+            mutableState.value = mutableState.value.copy(setup = ChromeSetupPlanner.stageState(SetupStep.DOWNLOADING_CHROME))
+        }
+        val result = runCatching {
+            macChromePreparer.prepare(acceptGoogleTerms, ChromePreparationContext(
+                locateChrome = { chromeProbe.locateExecutable() },
+                onStage = { step -> publishSetup(ChromeSetupPlanner.stageState(step)) },
+                onDownloadProgress = { downloaded, total -> publishSetup(ChromeSetupPlanner.downloadState(downloaded, total)) },
+            ))
+        }.getOrElse { failure ->
+            MacChromePreparer.Result(false, "Подготовка Chrome прервана: ${failure.message ?: "ошибка ввода-вывода"}")
+        }
+        if (result.success) {
+            publishSetup(ChromeSetupPlanner.rechecking())
+            refreshEnvironment()
+        }
+        operation.withLock {
+            mutableState.value = mutableState.value.copy(setup = SetupState(
+                if (result.success) SetupStatus.SUCCEEDED else SetupStatus.FAILED,
+                message = result.message, target = SetupTarget.CHROME,
+            ))
+        }
+    }
+
+    private suspend fun prepareMacDocker() {
+        operation.withLock {
+            if (mutableState.value.setup.inProgress) return
+            mutableState.value = mutableState.value.copy(
+                setup = SetupState(SetupStatus.PREPARING, SetupStep.DOWNLOADING_DOCKER,
+                    "Подготавливаем Docker Desktop для Mac", SetupTarget.DOCKER),
+            )
+        }
+        val result = runCatching {
+            macDockerPreparer.prepare(
+                onStage = { step -> publishSetup(SetupState(SetupStatus.PREPARING, step,
+                    macDockerStepMessage(step), SetupTarget.DOCKER)) },
+                onDownloadProgress = { downloaded, total -> publishSetup(SetupState(
+                    SetupStatus.PREPARING, SetupStep.DOWNLOADING_DOCKER, "Скачиваем Docker Desktop",
+                    SetupTarget.DOCKER, downloaded, total,
+                )) },
+            )
+        }.getOrElse { failure ->
+            MacDockerPreparer.Result(false, "Подготовка Docker прервана: ${failure.message ?: "ошибка ввода-вывода"}")
+        }
+        if (result.success) refreshEnvironment()
+        operation.withLock {
+            mutableState.value = mutableState.value.copy(setup = SetupState(
+                if (result.success) SetupStatus.SUCCEEDED else SetupStatus.FAILED,
+                message = result.message,
+                target = SetupTarget.DOCKER,
+            ))
+        }
+    }
+
+    private fun macDockerStepMessage(step: SetupStep): String = when (step) {
+        SetupStep.DOWNLOADING_DOCKER -> "Скачиваем Docker Desktop"
+        SetupStep.VERIFYING_DOCKER_INSTALLER -> "Проверяем образ и подпись Docker Desktop"
+        SetupStep.INSTALLING_DOCKER -> "Устанавливаем Docker Desktop; macOS может запросить пароль"
+        SetupStep.STARTING_DOCKER -> "Открываем Docker Desktop"
+        else -> "Подготавливаем Docker Desktop"
+    }
+
     /**
      * Installs the system Google Chrome the Browser Agent needs, then repeats the diagnostics.
      *
@@ -416,6 +505,10 @@ class PreflightLauncherController(
      * green without restarting the launcher.
      */
     override suspend fun prepareChrome(acceptGoogleTerms: Boolean) {
+        if (mutableState.value.preflight.platform == HostPlatform.MACOS) {
+            prepareMacChrome(acceptGoogleTerms)
+            return
+        }
         if (mutableState.value.preflight.platform == HostPlatform.LINUX) {
             prepareLinuxPackage(SetupTarget.CHROME, acceptGoogleTerms)
             return
@@ -482,8 +575,8 @@ class PreflightLauncherController(
                 onStage = { publishSetup(NodeSetupPlanner.stageState(it)) },
                 onDownloadProgress = { downloaded, total -> publishSetup(NodeSetupPlanner.downloadState(downloaded, total)) },
         )
-        val result = if (mutableState.value.preflight.platform == HostPlatform.LINUX) {
-            linuxNodePreparer.prepare(action, context)
+        val result = if (mutableState.value.preflight.platform in setOf(HostPlatform.LINUX, HostPlatform.MACOS)) {
+            unixNodePreparer.prepare(action, context)
         } else {
             nodePreparer.prepare(action, context)
         }
@@ -890,6 +983,13 @@ internal fun canRefreshDiagnostics(state: LauncherState): Boolean =
         !state.setup.inProgress &&
         state.preflight.status != PreflightStatus.NOT_CHECKED &&
         state.preflight.status != PreflightStatus.CHECKING
+
+internal fun shouldRefreshMacDockerAfterInstall(state: LauncherState): Boolean {
+    val docker = state.preflight.docker ?: return false
+    return state.preflight.platform == HostPlatform.MACOS &&
+        docker.desktop == DockerDesktopState.INSTALLED &&
+        (docker.cli != DockerCliState.AVAILABLE || docker.compose != DockerComposeState.AVAILABLE)
+}
 
 /** Codex authentication is independent and must never suspend container observation. */
 internal fun canRefreshRuntime(state: LauncherState): Boolean =

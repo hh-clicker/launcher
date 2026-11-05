@@ -66,6 +66,8 @@ import org.hhclicker.launcher.model.CodexAuthState
 import org.hhclicker.launcher.model.CodexAuthStatus
 import org.hhclicker.launcher.model.CodexRuntimeInfo
 import org.hhclicker.launcher.model.DesktopIntegrationState
+import org.hhclicker.launcher.model.ChromeInstallationState
+import org.hhclicker.launcher.model.DockerDesktopState
 import org.hhclicker.launcher.model.ReleaseUpdateState
 import org.hhclicker.launcher.model.UpdateUrgency
 import org.hhclicker.launcher.model.CheckSeverity
@@ -296,6 +298,7 @@ private fun EnvironmentScreen(
     val stage = when (state.preflight.platform) {
         HostPlatform.WINDOWS -> resolveSetupStage(state, wslAction, dockerAction, nodeAction, chromeAction)
         HostPlatform.LINUX -> resolveLinuxSetupStage(state)
+        HostPlatform.MACOS -> resolveMacSetupStage(state)
         else -> null
     }
     val showPortConflicts = state.preflight.portConflicts.isNotEmpty() &&
@@ -344,13 +347,17 @@ private fun EnvironmentScreen(
                 SetupSection(
                     presentation = when (stage) {
                         SetupTarget.WSL -> wslPresentation(state, wslAction, onPrepareWsl)
-                        SetupTarget.DOCKER -> if (state.preflight.platform == HostPlatform.LINUX)
-                            linuxPackagePresentation(state, SetupTarget.DOCKER, onOpenUrl) { onPrepareDocker(false) }
-                            else dockerPresentation(state, dockerAction, onPrepareDocker)
+                        SetupTarget.DOCKER -> when (state.preflight.platform) {
+                            HostPlatform.LINUX -> linuxPackagePresentation(state, SetupTarget.DOCKER, onOpenUrl) { onPrepareDocker(false) }
+                            HostPlatform.MACOS -> macSetupPresentation(state, SetupTarget.DOCKER, onOpenUrl) { onPrepareDocker(false) }
+                            else -> dockerPresentation(state, dockerAction, onPrepareDocker)
+                        }
                         SetupTarget.NODE -> nodePresentation(state, nodeAction, onPrepareNode)
-                        SetupTarget.CHROME -> if (state.preflight.platform == HostPlatform.LINUX)
-                            linuxPackagePresentation(state, SetupTarget.CHROME, onOpenUrl) { onPrepareChrome(true) }
-                            else chromePresentation(state, chromeAction, onPrepareChrome)
+                        SetupTarget.CHROME -> when (state.preflight.platform) {
+                            HostPlatform.LINUX -> linuxPackagePresentation(state, SetupTarget.CHROME, onOpenUrl) { onPrepareChrome(true) }
+                            HostPlatform.MACOS -> chromePresentation(state, macChromeSetupAction(state), onPrepareChrome)
+                            else -> chromePresentation(state, chromeAction, onPrepareChrome)
+                        }
                     },
                     onOpenUrl = onOpenUrl,
                 )
@@ -668,6 +675,70 @@ internal fun resolveLinuxSetupStage(state: LauncherState): SetupTarget? {
         setup.status == SetupStatus.SUCCEEDED -> setup.target
         else -> null
     }
+}
+
+internal fun resolveMacSetupStage(state: LauncherState): SetupTarget? {
+    val setup = state.setup
+    if (setup.status == SetupStatus.PREPARING || setup.status == SetupStatus.FAILED) return setup.target
+    val failed = state.preflight.checks.filter { !it.passed }.map { it.id }.toSet()
+    return when {
+        "node" in failed -> SetupTarget.NODE
+        failed.any { it in setOf("docker-cli", "docker-compose", "docker-server") } -> SetupTarget.DOCKER
+        "chrome" in failed -> SetupTarget.CHROME
+        setup.status == SetupStatus.SUCCEEDED -> setup.target
+        else -> null
+    }
+}
+
+internal fun macChromeSetupAction(state: LauncherState): ChromeSetupAction = when {
+    state.setup.inProgress -> ChromeSetupAction.ALREADY_IN_PROGRESS
+    state.preflight.chrome?.installation == ChromeInstallationState.INSTALLED -> ChromeSetupAction.NONE
+    state.preflight.chrome?.installation == ChromeInstallationState.NOT_INSTALLED -> ChromeSetupAction.INSTALL
+    else -> ChromeSetupAction.DIAGNOSTICS_FAILED
+}
+
+internal fun macSetupPresentation(
+    state: LauncherState,
+    target: SetupTarget,
+    onOpenUrl: (String) -> Unit,
+    onPrepareDocker: () -> Unit,
+): SetupPresentation {
+    val docker = target == SetupTarget.DOCKER
+    val setup = state.setup
+    val mine = docker && setup.target == SetupTarget.DOCKER
+    val preparing = mine && setup.inProgress
+    val failed = mine && setup.status == SetupStatus.FAILED
+    val succeeded = mine && setup.status == SetupStatus.SUCCEEDED
+    val installed = docker && state.preflight.docker?.desktop == DockerDesktopState.INSTALLED
+    return SetupPresentation(
+        accent = when { failed -> LauncherColors.Red; succeeded -> LauncherColors.Green; else -> LauncherColors.Text },
+        title = when {
+            preparing -> "Подготовка Docker Desktop"
+            failed -> "Не удалось подготовить Docker Desktop"
+            succeeded -> "Docker Desktop открыт"
+            installed -> "Ожидаем Docker Engine"
+            docker -> "Установить Docker Desktop"
+            else -> "Установить Google Chrome"
+        },
+        description = when {
+            preparing -> progressDescription(setup)
+            failed || succeeded -> setup.message.orEmpty()
+            installed -> "Docker Desktop установлен. Откройте его и завершите первоначальную настройку, если она запрошена. Лаунчер повторит проверку автоматически"
+            docker -> "Лаунчер скачает и проверит официальный Docker Desktop для этого Mac. macOS запросит права администратора; условия Docker появятся в самом Docker Desktop"
+            else -> "Установите Google Chrome для Mac с официального сайта и повторите проверку"
+        },
+        buttonLabel = when {
+            !docker -> "Инструкция"
+            preparing -> "Подготовка…"
+            failed -> "Повторить"
+            succeeded || installed -> "Открыть Docker"
+            else -> "Установить"
+        },
+        buttonEnabled = !state.busy,
+        onClick = {
+            if (docker) onPrepareDocker() else onOpenUrl("https://support.google.com/chrome/answer/95346")
+        },
+    )
 }
 
 internal fun linuxPackagePresentation(

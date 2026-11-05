@@ -130,7 +130,7 @@ class EnvironmentPreflight(
                 add(virtualizationCheck(wsl))
                 add(wslCheck(wsl))
             }
-            if (platform == HostPlatform.MACOS || platform == HostPlatform.OTHER) {
+            if (platform == HostPlatform.OTHER) {
                 add(EnvironmentCheck("platform", "Операционная система", false, "Запуск через лаунчер пока не поддерживается на этой ОС"))
             }
 
@@ -316,6 +316,7 @@ class EnvironmentPreflight(
             } else "Backend Docker не подтверждён"
             docker.compose != DockerComposeState.AVAILABLE -> "Engine работает, но Compose v2 недоступен"
             docker.backend == DockerBackend.NATIVE_LINUX -> "Engine ${docker.engineVersion ?: "работает"}: Linux containers"
+            docker.backend == DockerBackend.MACOS_LINUX_ENGINE -> "Engine ${docker.engineVersion ?: "работает"}: Linux containers на macOS"
             else -> "Engine ${docker.engineVersion ?: "работает"}: Linux containers на WSL 2"
         },
     )

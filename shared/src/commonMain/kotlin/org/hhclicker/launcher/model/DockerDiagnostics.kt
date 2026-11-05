@@ -59,11 +59,13 @@ enum class ContainerMode {
  *
  * On Windows, `docker info` reporting `OSType=linux` does not identify the backend: Linux containers
  * also run on Hyper-V and Docker VMM. Only an explicitly confirmed [WSL_2] counts as ready there.
- * On a Linux host, the native Docker probe records [NATIVE_LINUX]. [UNKNOWN] never counts as ready.
+ * On Linux and macOS hosts, the probe records the host-specific path to a reachable Linux engine.
+ * [UNKNOWN] never counts as ready.
  */
 enum class DockerBackend {
     WSL_2,
     NATIVE_LINUX,
+    MACOS_LINUX_ENGINE,
     NOT_WSL_2,
     UNKNOWN,
 }
@@ -107,5 +109,6 @@ data class DockerDiagnostics(
             compose == DockerComposeState.AVAILABLE &&
             engine == DockerEngineState.RUNNING &&
             containerMode == ContainerMode.LINUX &&
-            (backend == DockerBackend.WSL_2 || backend == DockerBackend.NATIVE_LINUX)
+            (backend == DockerBackend.WSL_2 || backend == DockerBackend.NATIVE_LINUX ||
+                backend == DockerBackend.MACOS_LINUX_ENGINE)
 }

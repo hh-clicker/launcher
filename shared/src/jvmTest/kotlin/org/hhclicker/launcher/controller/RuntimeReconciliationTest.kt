@@ -362,6 +362,24 @@ class RuntimeReconciliationTest {
 
     // A failed operation stops component reconciliation but must not stop diagnosing the machine.
     @Test
+    fun mac_installation_rechecks_cli_and_compose_until_both_are_discovered() {
+        val state = LauncherState.stopped().copy(preflight = PreflightState(
+            platform = HostPlatform.MACOS,
+            docker = readyDocker.copy(cli = DockerCliState.MISSING),
+        ))
+        assertTrue(shouldRefreshMacDockerAfterInstall(state))
+        assertTrue(shouldRefreshMacDockerAfterInstall(state.copy(preflight = state.preflight.copy(
+            docker = readyDocker.copy(compose = DockerComposeState.MISSING),
+        ))))
+        assertFalse(shouldRefreshMacDockerAfterInstall(state.copy(preflight = state.preflight.copy(
+            docker = readyDocker.copy(engine = DockerEngineState.UNAVAILABLE),
+        ))))
+        assertFalse(shouldRefreshMacDockerAfterInstall(state.copy(preflight = state.preflight.copy(
+            platform = HostPlatform.WINDOWS,
+        ))))
+    }
+
+    @Test
     fun a_failed_launcher_still_gets_diagnosed() {
         val failed = allRunning().copy(status = LauncherStatus.FAILED, preflight = PreflightState.ready)
 

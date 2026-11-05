@@ -1,5 +1,6 @@
 package org.hhclicker.launcher.preflight
 
+import java.nio.file.Files
 import java.nio.file.Path
 import org.hhclicker.launcher.model.DockerBackend
 import org.hhclicker.launcher.model.DockerCliState
@@ -29,6 +30,7 @@ class DockerProbe(
     private val environment: (String) -> String? = System::getenv,
     private val processes: () -> List<String> = ::currentUserProcessCommands,
     private val platform: HostPlatform = HostPlatformDetector.detect(),
+    private val macDockerApplication: Path = Path.of("/Applications/Docker.app"),
 ) {
 
     /**
@@ -45,9 +47,11 @@ class DockerProbe(
      * Finds Docker Desktop's own CLI without relying on the PATH inherited when the launcher started.
      * This matters immediately after installation: Windows updates PATH for future processes only.
      */
-    fun locateCliExecutable(): Path? = if (platform == HostPlatform.WINDOWS) {
-        runCatching { locator.locate()?.cliExecutable }.getOrNull()
-    } else null
+    fun locateCliExecutable(): Path? = when (platform) {
+        HostPlatform.WINDOWS -> runCatching { locator.locate()?.cliExecutable }.getOrNull()
+        HostPlatform.MACOS -> MacDockerCliLocator().locate()
+        else -> null
+    }
 
     fun probe(): DockerDiagnostics {
         val architecture = DockerDiagnosticsParser.architecture(
@@ -59,17 +63,18 @@ class DockerProbe(
         val installation: Result<DockerInstallation?> = if (platform == HostPlatform.WINDOWS) runCatching { locator.locate() }
             else Result.success(null)
 
-        val desktopState = if (installation.isFailure) {
-            DockerDesktopState.CHECK_FAILED
-        } else {
-            DockerDiagnosticsParser.desktopState(
+        val desktopState = when {
+            platform == HostPlatform.MACOS -> if (Files.isDirectory(macDockerApplication))
+                DockerDesktopState.INSTALLED else DockerDesktopState.NOT_INSTALLED
+            installation.isFailure -> DockerDesktopState.CHECK_FAILED
+            else -> DockerDiagnosticsParser.desktopState(
                 installed = installation.getOrNull() != null,
                 version = installation.getOrNull()?.version,
             )
         }
         val desktopVersion = installation.getOrNull()?.version
 
-        val dockerCommand = installation.getOrNull()?.cliExecutable?.toAbsolutePath()?.toString() ?: DOCKER_ON_PATH
+        val dockerCommand = locateCliExecutable()?.toAbsolutePath()?.toString() ?: DOCKER_ON_PATH
         val cli = DockerDiagnosticsParser.cli(run(commandProbe, cliVersionCommand(dockerCommand)))
 
         // Compose and the engine are only meaningful once a CLI answered; skipping them keeps a clean
@@ -97,6 +102,7 @@ class DockerProbe(
         val backend = when (platform) {
             HostPlatform.WINDOWS -> runCatching { settingsReader.backend(defaultBackend) }.getOrNull() ?: DockerBackend.UNKNOWN
             HostPlatform.LINUX -> DockerBackend.NATIVE_LINUX
+            HostPlatform.MACOS -> DockerBackend.MACOS_LINUX_ENGINE
             else -> DockerBackend.UNKNOWN
         }
 

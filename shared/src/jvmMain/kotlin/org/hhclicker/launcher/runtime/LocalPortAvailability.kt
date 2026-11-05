@@ -5,6 +5,7 @@ import java.net.ServerSocket
 import java.nio.file.Files
 import java.nio.file.Path
 import org.hhclicker.launcher.model.HostPlatform
+import org.hhclicker.launcher.preflight.CommandProbe
 import org.hhclicker.launcher.preflight.WindowsPortOwnerProbe
 
 internal object LocalPortAvailability {
@@ -18,6 +19,14 @@ internal object LocalPortAvailability {
                     .map(Files::readString)
                 !linuxListeningPortPresent(port, tables)
             }.getOrDefault(false)
+        }
+        if (platform == HostPlatform.MACOS) {
+            // Docker Desktop can publish port 80 through its privileged helper even though an ordinary
+            // launcher process cannot bind that port. Ask whether anything is actually listening.
+            val result = CommandProbe().execute(
+                listOf("/usr/sbin/lsof", "-nP", "-iTCP:$port", "-sTCP:LISTEN"),
+            )
+            return result.started && result.exitCode == 1 && !result.timedOut
         }
         val bindSucceeded = runCatching {
             ServerSocket().use { socket ->

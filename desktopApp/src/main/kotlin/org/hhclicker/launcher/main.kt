@@ -43,6 +43,7 @@ import org.hhclicker.launcher.design.LauncherTheme
 import org.hhclicker.launcher.design.brandIconPainter
 import org.hhclicker.launcher.controller.PreflightLauncherController
 import org.hhclicker.launcher.runtime.ExternalBrowserOpener
+import org.hhclicker.launcher.runtime.HostPlatformDetector
 import org.hhclicker.launcher.runtime.LauncherDataPaths
 import org.hhclicker.launcher.runtime.LinuxDesktopIntegration
 import org.hhclicker.launcher.runtime.ReleaseUpdateChecker
@@ -50,10 +51,14 @@ import org.hhclicker.launcher.runtime.SingleInstanceDecision
 import org.hhclicker.launcher.runtime.SingleInstanceGuard
 import org.hhclicker.launcher.runtime.SingleInstanceOutcome
 import org.hhclicker.launcher.runtime.WindowsJavaNetworkCompatibility
+import org.hhclicker.launcher.model.HostPlatform
 
 fun main() {
     WindowsJavaNetworkCompatibility.configure()
-    System.setProperty("skiko.renderApi", "OPENGL")
+    // Skiko uses Metal (with its own fallback) on macOS. Forcing OpenGL there aborts window creation.
+    if (HostPlatformDetector.detect() != HostPlatform.MACOS && System.getProperty("skiko.renderApi") == null) {
+        System.setProperty("skiko.renderApi", "OPENGL")
+    }
 
     // A failed bind is not automatically "HH Clicker is already running". Only a launcher that answers
     // the handshake may make this process exit silently; anything else has to say why nothing opened.

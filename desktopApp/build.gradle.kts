@@ -35,6 +35,19 @@ val releaseCatalog = rootProject.layout.projectDirectory.dir("releases")
 val releaseDefinition = releaseDirectory.file("release.json")
 val releaseNotes = releaseDirectory.file("notes.ru.md")
 val linuxHost = System.getProperty("os.name").startsWith("Linux", ignoreCase = true)
+val macHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
+val unixHost = linuxHost || macHost
+val macIcon = layout.buildDirectory.file("macos-icon/hh-clicker.icns")
+
+val prepareMacIcon by tasks.registering(Exec::class) {
+    group = "distribution"
+    val script = rootProject.layout.projectDirectory.file("installer/build-macos-icon.sh")
+    val png = project.file("src/main/resources/hh-clicker.png")
+    inputs.files(script, png)
+    outputs.file(macIcon)
+    commandLine("bash", script.asFile.absolutePath, png.absolutePath, macIcon.get().asFile.absolutePath)
+    onlyIf { System.getProperty("os.name").startsWith("Mac", ignoreCase = true) }
+}
 
 val prepareInstallerPayload by tasks.registering(Exec::class) {
     group = "distribution"
@@ -73,7 +86,7 @@ val prepareInstallerPayload by tasks.registering(Exec::class) {
 
 val prepareLinuxPayload by tasks.registering(Exec::class) {
     group = "distribution"
-    description = "Stages the Linux HH Clicker services and compiled Browser Agent"
+    description = "Stages the Unix HH Clicker services and compiled Browser Agent"
 
     val stagingScript = rootProject.layout.projectDirectory.file("installer/prepare-payload.mjs")
     val workspaceRoot = rootProject.layout.projectDirectory.dir("..").asFile
@@ -99,12 +112,13 @@ val prepareLinuxPayload by tasks.registering(Exec::class) {
 // Compose copies <appResourcesRootDir>/common into $APPDIR/resources. Only distribution tasks build the
 // expensive payload; ordinary run/hotRun must stay fast. The ordering makes the Sync observe fresh staging.
 tasks.matching { it.name == "prepareAppResources" }.configureEach {
-    mustRunAfter(if (linuxHost) prepareLinuxPayload else prepareInstallerPayload)
+    mustRunAfter(if (unixHost) prepareLinuxPayload else prepareInstallerPayload)
 }
 tasks.matching {
     it.name == "createDistributable"
 }.configureEach {
-    dependsOn(if (linuxHost) prepareLinuxPayload else prepareInstallerPayload)
+    dependsOn(if (unixHost) prepareLinuxPayload else prepareInstallerPayload)
+    if (macHost) dependsOn(prepareMacIcon)
     // Compose's jpackage task does not fingerprint our externally staged service tree reliably.
     outputs.upToDateWhen { false }
 }
@@ -185,6 +199,11 @@ compose.desktop {
             }
             linux {
                 iconFile.set(project.file("src/main/resources/hh-clicker.png"))
+            }
+            macOS {
+                bundleID = "org.hhclicker.launcher"
+                minimumSystemVersion = "14.0"
+                iconFile.set(macIcon.get().asFile)
             }
         }
     }

@@ -74,7 +74,7 @@ class NodeRuntimeLocator(
             platform: HostPlatform = HostPlatformDetector.detect(),
         ): Path? {
             val applicationRoot = LauncherDataPaths.applicationRoot(environment, platform) ?: return null
-            val name = if (platform == HostPlatform.LINUX) "node" else "node.exe"
+            val name = if (platform == HostPlatform.WINDOWS) "node.exe" else "node"
             return sequenceOf(
                 applicationRoot.resolve("data/runtime/node-${NodePortableRuntime.VERSION}/$name"),
                 applicationRoot.resolve("runtime/node-${NodePortableRuntime.VERSION}/$name"),

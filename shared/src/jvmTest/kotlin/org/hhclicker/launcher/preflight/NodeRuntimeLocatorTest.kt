@@ -23,4 +23,20 @@ class NodeRuntimeLocatorTest {
             ),
         )
     }
+
+    @Test
+    fun macos_portable_node_uses_unix_executable_name() {
+        val home = createTempDirectory("hh-node-macos")
+        val node = home.resolve("Library/Application Support/HH Clicker/data/runtime/node-${NodePortableRuntime.VERSION}/node")
+        Files.createDirectories(node.parent)
+        Files.writeString(node, "node")
+
+        assertEquals(
+            node,
+            NodeRuntimeLocator.localPortableExecutable(
+                environment = { if (it == "HOME") home.toString() else null },
+                platform = HostPlatform.MACOS,
+            ),
+        )
+    }
 }

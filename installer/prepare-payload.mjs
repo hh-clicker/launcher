@@ -2,7 +2,7 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, read
 import { dirname, extname, join, resolve, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
-// Linux distribution staging. The Windows installer keeps its existing PowerShell staging path.
+// Linux/macOS distribution staging. Windows keeps its existing PowerShell staging path.
 const [workspaceArgument, destinationArgument, version, releaseArgument, notesArgument, channel] = process.argv.slice(2)
 if (!workspaceArgument || !destinationArgument || !/^\d+\.\d+\.\d+$/.test(version ?? '') || !releaseArgument || !notesArgument || !['stable', 'nightly'].includes(channel)) {
   throw new Error('Expected workspace, destination, numeric version, release definition, notes, and stable|nightly')
@@ -119,4 +119,4 @@ if (channel === 'nightly') {
   noteVersions.push(version)
 }
 writeFileSync(join(notesDirectory, 'release-notes.index'), noteVersions.join('\n') + '\n')
-console.log(`Linux distribution payload ready: ${destination}`)
+console.log(`Unix distribution payload ready: ${destination}`)

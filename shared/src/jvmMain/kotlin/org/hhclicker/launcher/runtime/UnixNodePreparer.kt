@@ -7,19 +7,30 @@ import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.hhclicker.launcher.model.SetupStep
+import org.hhclicker.launcher.model.HostPlatform
 import org.hhclicker.launcher.setup.NodePreparationOutcome
 import org.hhclicker.launcher.setup.NodePreparationResult
 import org.hhclicker.launcher.setup.NodeSetupAction
 
-/** Official pinned Node archive, installed only in the launcher's user data. */
-class LinuxNodePreparer(
+/** Official pinned Node archive, installed only in the launcher's user data on Unix hosts. */
+class UnixNodePreparer(
     private val downloader: FileDownloader = HttpFileDownloader(),
+    private val platform: HostPlatform = HostPlatformDetector.detect(),
 ) {
     suspend fun prepare(action: NodeSetupAction, context: NodePreparationContext): NodePreparationResult =
         withContext(Dispatchers.IO) {
             if (action != NodeSetupAction.DOWNLOAD_PORTABLE) return@withContext NodePreparationResult(NodePreparationOutcome.NOT_APPLICABLE)
             if (context.nodeReady()) return@withContext NodePreparationResult(NodePreparationOutcome.ALREADY_READY)
-            if (System.getProperty("os.arch") !in setOf("amd64", "x86_64")) {
+            val architecture = System.getProperty("os.arch").lowercase()
+            val nodeArchitecture = when {
+                architecture in setOf("amd64", "x86_64") -> "x64"
+                platform == HostPlatform.MACOS && architecture in setOf("aarch64", "arm64") -> "arm64"
+                else -> null
+            }
+            if (nodeArchitecture == null) {
+                return@withContext NodePreparationResult(NodePreparationOutcome.NOT_APPLICABLE)
+            }
+            if (platform != HostPlatform.LINUX && platform != HostPlatform.MACOS) {
                 return@withContext NodePreparationResult(NodePreparationOutcome.NOT_APPLICABLE)
             }
             val root = LauncherDataPaths.dataRoot() ?: return@withContext NodePreparationResult(NodePreparationOutcome.NOT_APPLICABLE)
@@ -27,8 +38,8 @@ class LinuxNodePreparer(
             if (runCatching { Files.createDirectories(cache) }.isFailure) {
                 return@withContext NodePreparationResult(NodePreparationOutcome.NOT_APPLICABLE)
             }
-            val distribution = "node-v${NodePortableRuntime.VERSION}-linux-x64"
-            val archiveName = "$distribution.tar.xz"
+            val distribution = "node-v${NodePortableRuntime.VERSION}-${if (platform == HostPlatform.MACOS) "darwin" else "linux"}-$nodeArchitecture"
+            val archiveName = "$distribution.${if (platform == HostPlatform.MACOS) "tar.gz" else "tar.xz"}"
             val archive = cache.resolve(archiveName)
             val sums = cache.resolve("node-shasums-${NodePortableRuntime.VERSION}.txt")
             context.onStage(SetupStep.DOWNLOADING_NODE_CHECKSUMS)
@@ -60,7 +71,8 @@ class LinuxNodePreparer(
             val installed = runCatching {
                 Files.createDirectories(directory)
                 val process = ProcessBuilder(
-                    "tar", "-xJOf", archive.toString(), "$distribution/bin/node",
+                    "tar", if (platform == HostPlatform.MACOS) "-xzOf" else "-xJOf",
+                    archive.toString(), "$distribution/bin/node",
                 ).redirectOutput(temporary.toFile()).start()
                 if (process.waitFor() != 0 || Files.size(temporary) == 0L) return@runCatching false
                 temporary.toFile().setExecutable(true, true)
