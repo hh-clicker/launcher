@@ -28,7 +28,8 @@ class GenerationAuthClient(
     suspend fun runtimeInfo(baseUrl: String): CodexRuntimeInfo? =
         request(baseUrl, "/health", timeout = Duration.ofSeconds(3))?.let(::parseRuntimeInfo)
 
-    suspend fun refreshStatus(baseUrl: String): CodexAuthState = request(baseUrl, "/auth/status/refresh", post = true)
+    suspend fun refreshStatus(baseUrl: String): CodexAuthState = request(baseUrl, "/auth/status/refresh", post = true,
+        timeout = Duration.ofSeconds(45))
         ?.let(::parseAccountStatus) ?: failed("Не удалось проверить авторизацию Codex")
 
     suspend fun startLogin(baseUrl: String): CodexAuthState = request(baseUrl, "/auth/login/start", post = true)

@@ -15,6 +15,12 @@ class WorkspaceLocator(
 
         return sequence {
             if (configured != null) yield(configured)
+            // An installed bundle must use its own service payload even when launched from a
+            // developer checkout. Gradle's run resources have no bundle marker and keep the
+            // checkout-first behaviour below.
+            if (packaged != null && BundleLayout.kind(packaged) == org.hhclicker.launcher.model.BundleKind.PORTABLE) {
+                yield(packaged)
+            }
             var current: Path? = start
             while (current != null) {
                 val candidate = current

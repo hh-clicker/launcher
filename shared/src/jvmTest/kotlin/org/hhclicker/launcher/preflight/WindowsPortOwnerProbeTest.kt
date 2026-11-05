@@ -2,6 +2,7 @@ package org.hhclicker.launcher.preflight
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class WindowsPortOwnerProbeTest {
     private class FakeCommandProbe(private val output: String) : CommandProbe() {
@@ -21,6 +22,19 @@ class WindowsPortOwnerProbeTest {
         )
 
         assertEquals(LocalPortOwner(4242, "other.exe"), probe.owner(8080))
+        assertEquals(false, probe.isAvailable(8080))
+        assertEquals(true, probe.isAvailable(8081))
+    }
+
+    @Test
+    fun a_recently_closed_socket_does_not_count_as_a_listener() {
+        val probe = WindowsPortOwnerProbe(
+            commandProbe = FakeCommandProbe("TCP    127.0.0.1:17374    0.0.0.0:0    TIME_WAIT    0"),
+            environment = { "C:\\Windows" },
+        )
+
+        assertNull(probe.owner(17374))
+        assertEquals(true, probe.isAvailable(17374))
     }
 }
 

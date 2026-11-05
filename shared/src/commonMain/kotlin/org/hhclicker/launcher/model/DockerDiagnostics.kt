@@ -57,11 +57,13 @@ enum class ContainerMode {
 /**
  * Virtualization backend behind the engine.
  *
- * `docker info` reporting `OSType=linux` does not identify the backend: Linux containers also run on
- * Hyper-V and on Docker VMM. Only an explicitly confirmed [WSL_2] counts as ready; [UNKNOWN] never does.
+ * On Windows, `docker info` reporting `OSType=linux` does not identify the backend: Linux containers
+ * also run on Hyper-V and Docker VMM. Only an explicitly confirmed [WSL_2] counts as ready there.
+ * On a Linux host, the native Docker probe records [NATIVE_LINUX]. [UNKNOWN] never counts as ready.
  */
 enum class DockerBackend {
     WSL_2,
+    NATIVE_LINUX,
     NOT_WSL_2,
     UNKNOWN,
 }
@@ -97,13 +99,13 @@ data class DockerDiagnostics(
     val updateRecommended: Boolean = false,
 ) {
     /**
-     * The complete readiness contract for HH Clicker: a reachable Linux engine on the WSL 2 backend with
-     * a working CLI and Compose v2. Anything unconfirmed keeps this false.
+     * A reachable Linux engine, CLI and Compose v2 are required. Windows additionally confirms WSL 2;
+     * a native Linux probe records its own backend explicitly.
      */
     val ready: Boolean
         get() = cli == DockerCliState.AVAILABLE &&
             compose == DockerComposeState.AVAILABLE &&
             engine == DockerEngineState.RUNNING &&
             containerMode == ContainerMode.LINUX &&
-            backend == DockerBackend.WSL_2
+            (backend == DockerBackend.WSL_2 || backend == DockerBackend.NATIVE_LINUX)
 }

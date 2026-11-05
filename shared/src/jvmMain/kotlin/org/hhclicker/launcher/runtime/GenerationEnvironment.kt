@@ -2,6 +2,7 @@ package org.hhclicker.launcher.runtime
 
 import java.nio.file.Files
 import java.nio.file.Path
+import org.hhclicker.launcher.model.HostPlatform
 import org.hhclicker.launcher.preflight.DockerCliResolver
 
 class GenerationEnvironment(
@@ -36,6 +37,7 @@ class GenerationEnvironment(
                 configuration.generationProjectName,
                 configuration.generationEnvironmentFile,
                 build.build,
+                linuxComposeFiles(directory),
             ),
             workingDirectory = directory,
             timeoutMs = COMPOSE_START_TIMEOUT_MS,
@@ -57,13 +59,15 @@ class GenerationEnvironment(
     }
 
     suspend fun stop(workspace: Path, configuration: LauncherRuntimeConfiguration): String? {
+        val directory = workspace.resolve("generation-agent")
         val result = commandRunner.execute(
             arguments = DockerComposeCommands.down(
                 dockerCli.executable(),
                 configuration.generationProjectName,
                 configuration.generationEnvironmentFile,
+                linuxComposeFiles(directory),
             ),
-            workingDirectory = workspace.resolve("generation-agent"),
+            workingDirectory = directory,
             timeoutMs = COMPOSE_STOP_TIMEOUT_MS,
         )
         if (result.successful) return null
@@ -73,6 +77,11 @@ class GenerationEnvironment(
             result.output.lineSequence().lastOrNull() ?: "Не удалось остановить Generation Agent"
         }
     }
+
+    private fun linuxComposeFiles(directory: Path): List<Path> =
+        if (HostPlatformDetector.detect() == HostPlatform.LINUX) {
+            listOf(directory.resolve("compose.yaml"), directory.resolve("compose.linux.yaml"))
+        } else emptyList()
 
     private companion object {
         const val COMPOSE_START_TIMEOUT_MS = 600_000L

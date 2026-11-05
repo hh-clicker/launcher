@@ -43,7 +43,7 @@ class ChromeInstallerCommandsTest {
         val resolved = ChromeInstallerCommands.msiexecPath { name ->
             if (name == "SYSTEMROOT") "C:\\Windows" else null
         }
-        assertEquals(Path.of("C:\\Windows\\System32\\msiexec.exe"), resolved)
+        assertEquals(Path.of("C:\\Windows", "System32", "msiexec.exe"), resolved)
     }
 
     @Test

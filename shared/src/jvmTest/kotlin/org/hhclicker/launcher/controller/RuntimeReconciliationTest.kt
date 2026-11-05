@@ -20,6 +20,7 @@ import org.hhclicker.launcher.model.DockerDesktopState
 import org.hhclicker.launcher.model.DockerDiagnostics
 import org.hhclicker.launcher.model.DockerEngineState
 import org.hhclicker.launcher.model.DockerServiceSnapshot
+import org.hhclicker.launcher.model.HostPlatform
 import org.hhclicker.launcher.model.LauncherComponentState
 import org.hhclicker.launcher.model.LauncherState
 import org.hhclicker.launcher.model.LauncherStatus
@@ -175,7 +176,7 @@ class RuntimeReconciliationTest {
 
     @Test
     fun an_undetermined_ports_row_reports_the_reason_and_never_blocks_the_start() {
-        val state = EnvironmentPreflight().withServiceInspection(
+        val state = EnvironmentPreflight(platform = HostPlatform.WINDOWS).withServiceInspection(
             state = PreflightState(status = PreflightStatus.READY, checks = listOf(portsCheckPlaceholder())),
             configuration = configuration,
             inspection = ServicePortInspection.unknown("docker ps завершился с кодом 1: connection refused"),
@@ -191,7 +192,7 @@ class RuntimeReconciliationTest {
     // A confirmed conflict is a completed query, so it keeps blocking the start.
     @Test
     fun a_confirmed_port_conflict_still_blocks_the_start() {
-        val state = EnvironmentPreflight().withServiceInspection(
+        val state = EnvironmentPreflight(platform = HostPlatform.WINDOWS).withServiceInspection(
             state = PreflightState(status = PreflightStatus.READY, checks = listOf(portsCheckPlaceholder())),
             configuration = configuration,
             inspection = ServicePortInspection(
@@ -279,7 +280,7 @@ class RuntimeReconciliationTest {
             docker = readyDocker,
         )
 
-        val lost = EnvironmentPreflight().withEngineState(
+        val lost = EnvironmentPreflight(platform = HostPlatform.WINDOWS).withEngineState(
             healthy,
             DockerEngineProbe(DockerEngineState.UNAVAILABLE),
         )
@@ -305,7 +306,7 @@ class RuntimeReconciliationTest {
             ),
         )
 
-        val recovered = EnvironmentPreflight().withEngineState(
+        val recovered = EnvironmentPreflight(platform = HostPlatform.WINDOWS).withEngineState(
             blocked,
             DockerEngineProbe(DockerEngineState.RUNNING, ContainerMode.LINUX, "27.0.3"),
         )
@@ -320,7 +321,7 @@ class RuntimeReconciliationTest {
 
         assertEquals(
             state,
-            EnvironmentPreflight().withEngineState(state, DockerEngineProbe(DockerEngineState.UNAVAILABLE)),
+            EnvironmentPreflight(platform = HostPlatform.WINDOWS).withEngineState(state, DockerEngineProbe(DockerEngineState.UNAVAILABLE)),
         )
     }
 
@@ -386,7 +387,7 @@ class RuntimeReconciliationTest {
             docker = readyDocker,
         )
 
-        val lost = EnvironmentPreflight().withEngineState(
+        val lost = EnvironmentPreflight(platform = HostPlatform.WINDOWS).withEngineState(
             healthy,
             // What a real probe answers once Docker Desktop is gone.
             DockerEngineProbe(
@@ -407,7 +408,7 @@ class RuntimeReconciliationTest {
             docker = readyDocker,
         )
 
-        val starting = EnvironmentPreflight().withEngineState(
+        val starting = EnvironmentPreflight(platform = HostPlatform.WINDOWS).withEngineState(
             state,
             DockerEngineProbe(
                 state = DockerEngineState.STARTING,

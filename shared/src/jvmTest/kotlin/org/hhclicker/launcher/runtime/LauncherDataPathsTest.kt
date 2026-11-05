@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.hhclicker.launcher.model.HostPlatform
 
 class LauncherDataPathsTest {
     @Test
@@ -22,9 +23,10 @@ class LauncherDataPathsTest {
         Files.createDirectories(root.resolve("runtime/bin"))
         Files.writeString(root.resolve("runtime/bin/java.exe"), "application-runtime")
 
-        LauncherDataPaths.migrateLegacyLayout { name ->
-            if (name == "LOCALAPPDATA") localAppData.toString() else null
-        }
+        LauncherDataPaths.migrateLegacyLayout(
+            environment = { name -> if (name == "LOCALAPPDATA") localAppData.toString() else null },
+            platform = HostPlatform.WINDOWS,
+        )
 
         assertTrue(Files.isRegularFile(root.resolve("data/config/production/infra.env")))
         assertTrue(Files.isRegularFile(root.resolve("data/browser-agent/profiles/account/Cookies")))
@@ -43,11 +45,27 @@ class LauncherDataPathsTest {
         Files.createDirectories(root.resolve("data/config/production"))
         Files.writeString(root.resolve("data/config/production/infra.env"), "current")
 
-        LauncherDataPaths.migrateLegacyLayout { name ->
-            if (name == "LOCALAPPDATA") localAppData.toString() else null
-        }
+        LauncherDataPaths.migrateLegacyLayout(
+            environment = { name -> if (name == "LOCALAPPDATA") localAppData.toString() else null },
+            platform = HostPlatform.WINDOWS,
+        )
 
         assertEquals("current", Files.readString(root.resolve("data/config/production/infra.env")))
         assertEquals("old", Files.readString(root.resolve("config/production/infra.env")))
+    }
+
+    @Test
+    fun linux_data_uses_xdg_home_or_user_home_without_windows_environment() {
+        val home = createTempDirectory("hh-linux-home")
+        val xdg = createTempDirectory("hh-linux-xdg")
+        val environment = mapOf("XDG_DATA_HOME" to xdg.toString(), "HOME" to home.toString())
+        assertEquals(
+            xdg.resolve("hh-clicker/data"),
+            LauncherDataPaths.applicationRoot(environment::get, HostPlatform.LINUX)?.resolve("data"),
+        )
+        assertEquals(
+            home.resolve(".local/share/hh-clicker"),
+            LauncherDataPaths.applicationRoot(mapOf("HOME" to home.toString())::get, HostPlatform.LINUX),
+        )
     }
 }

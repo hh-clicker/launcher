@@ -67,6 +67,7 @@ import org.hhclicker.launcher.model.CodexAuthStatus
 import org.hhclicker.launcher.model.CodexRuntimeInfo
 import org.hhclicker.launcher.model.CheckSeverity
 import org.hhclicker.launcher.model.EnvironmentCheck
+import org.hhclicker.launcher.model.HostPlatform
 import org.hhclicker.launcher.model.LauncherComponentState
 import org.hhclicker.launcher.model.LauncherState
 import org.hhclicker.launcher.model.LauncherStatus
@@ -244,17 +245,25 @@ private fun EnvironmentScreen(
     val dockerAction = DockerSetupPlanner.decide(state.preflight.wsl, state.preflight.docker)
     val nodeAction = NodeSetupPlanner.decide(state.preflight.node, state.setup.inProgress)
     val chromeAction = ChromeSetupPlanner.decide(state.preflight.chrome, state.setup.inProgress)
-    val stage = resolveSetupStage(state, wslAction, dockerAction, nodeAction, chromeAction)
+    val stage = when (state.preflight.platform) {
+        HostPlatform.WINDOWS -> resolveSetupStage(state, wslAction, dockerAction, nodeAction, chromeAction)
+        HostPlatform.LINUX -> resolveLinuxSetupStage(state)
+        else -> null
+    }
     val showPortConflicts = state.preflight.portConflicts.isNotEmpty() &&
         (stage == null || state.setup.status == SetupStatus.SUCCEEDED)
     GlassPanel(modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 24.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column {
+                Column(Modifier.weight(1f)) {
                     Text(if (blocked) "Подготовка компьютера" else "Проверка окружения", style = MaterialTheme.typography.headlineLarge)
                     Spacer(Modifier.height(3.dp))
                     Text(
                         when {
+                            state.preflight.platform == HostPlatform.LINUX &&
+                                state.setup.status == SetupStatus.RESTART_REQUIRED &&
+                                checks.any { it.id in setOf("node", "chrome") && !it.passed } ->
+                                "Установите остальные зависимости, затем один раз выйдите из сеанса Debian и войдите снова"
                             state.setup.status == SetupStatus.RESTART_REQUIRED ->
                                 state.setup.message ?: "Перезагрузите компьютер и запустите лаунчер снова"
                             blocked -> "Выполните обязательные пункты и запустите проверку снова"
@@ -264,9 +273,15 @@ private fun EnvironmentScreen(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(12.dp))
                 if (checks.isNotEmpty()) {
-                    Text("$passedChecks из ${checks.size}", color = LauncherColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "$passedChecks из ${checks.size}",
+                        color = LauncherColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
                     Spacer(Modifier.width(12.dp))
                 }
                 RefreshButton(
@@ -281,9 +296,13 @@ private fun EnvironmentScreen(
                 SetupSection(
                     presentation = when (stage) {
                         SetupTarget.WSL -> wslPresentation(state, wslAction, onPrepareWsl)
-                        SetupTarget.DOCKER -> dockerPresentation(state, dockerAction, onPrepareDocker)
+                        SetupTarget.DOCKER -> if (state.preflight.platform == HostPlatform.LINUX)
+                            linuxPackagePresentation(state, SetupTarget.DOCKER, onOpenUrl) { onPrepareDocker(false) }
+                            else dockerPresentation(state, dockerAction, onPrepareDocker)
                         SetupTarget.NODE -> nodePresentation(state, nodeAction, onPrepareNode)
-                        SetupTarget.CHROME -> chromePresentation(state, chromeAction, onPrepareChrome)
+                        SetupTarget.CHROME -> if (state.preflight.platform == HostPlatform.LINUX)
+                            linuxPackagePresentation(state, SetupTarget.CHROME, onOpenUrl) { onPrepareChrome(true) }
+                            else chromePresentation(state, chromeAction, onPrepareChrome)
                     },
                     onOpenUrl = onOpenUrl,
                 )
@@ -530,7 +549,7 @@ private fun RefreshButton(enabled: Boolean, checking: Boolean, onClick: () -> Un
  * The screen never picks a command: it renders one action decided by [WslSetupPlanner] or
  * [DockerSetupPlanner], with an optional licence notice attached to it.
  */
-private data class SetupPresentation(
+internal data class SetupPresentation(
     val accent: Color,
     val title: String,
     val description: String,
@@ -570,6 +589,83 @@ private fun resolveSetupStage(
         setup.status == SetupStatus.SUCCEEDED -> setup.target
         else -> null
     }
+}
+
+internal fun resolveLinuxSetupStage(state: LauncherState): SetupTarget? {
+    val setup = state.setup
+    if (setup.status == SetupStatus.PREPARING || setup.status == SetupStatus.FAILED) return setup.target
+    val failed = state.preflight.checks.filter { !it.passed }.map { it.id }.toSet()
+    return when {
+        failed.any { it in setOf("docker-cli", "docker-compose") } -> SetupTarget.DOCKER
+        "node" in failed -> SetupTarget.NODE
+        "chrome" in failed -> SetupTarget.CHROME
+        "docker-server" in failed -> SetupTarget.DOCKER
+        setup.status == SetupStatus.RESTART_REQUIRED -> setup.target
+        setup.status == SetupStatus.SUCCEEDED -> setup.target
+        else -> null
+    }
+}
+
+internal fun linuxPackagePresentation(
+    state: LauncherState,
+    target: SetupTarget,
+    onOpenUrl: (String) -> Unit,
+    onPrepare: () -> Unit,
+): SetupPresentation {
+    val docker = target == SetupTarget.DOCKER
+    val setup = state.setup
+    val engineOnly = docker && state.preflight.checks.none {
+        it.id in setOf("docker-cli", "docker-compose") && !it.passed
+    } && state.preflight.checks.any { it.id == "docker-server" && !it.passed }
+    if (!state.preflight.linuxPackageAutoInstallSupported) {
+        val url = when {
+            engineOnly -> "https://docs.docker.com/engine/install/linux-postinstall/"
+            docker -> "https://docs.docker.com/engine/install/"
+            else -> "https://support.google.com/chrome/answer/95346"
+        }
+        return SetupPresentation(
+            accent = LauncherColors.Text,
+            title = when { engineOnly -> "Настроить Docker Engine"; docker -> "Установить Docker"; else -> "Установить Google Chrome" },
+            description = when {
+                engineOnly -> "Проверьте запуск службы Docker и доступ текущего пользователя к ней без sudo. Затем повторите проверку"
+                docker -> "Установите Docker Engine, CLI и Compose plugin по инструкции для своей системы. Запустите службу и настройте доступ без sudo"
+                else -> "Установите Google Chrome для своей системы. После установки повторите проверку окружения"
+            },
+            buttonLabel = "Инструкция",
+            buttonEnabled = !state.busy,
+            onClick = { onOpenUrl(url) },
+        )
+    }
+    val mine = setup.target == target
+    val preparing = mine && setup.inProgress
+    val failed = mine && setup.status == SetupStatus.FAILED
+    val finished = mine && setup.status == SetupStatus.SUCCEEDED
+    val restart = mine && setup.status == SetupStatus.RESTART_REQUIRED
+    return SetupPresentation(
+        accent = when { failed -> LauncherColors.Red; restart -> LauncherColors.Orange
+            finished -> LauncherColors.Green; else -> LauncherColors.Text },
+        title = when {
+            restart -> "Войдите в Debian снова"
+            preparing -> if (docker) "Подготовка Docker" else "Подготовка Google Chrome"
+            failed -> if (docker) "Не удалось подготовить Docker" else "Не удалось установить Google Chrome"
+            finished -> if (docker) "Docker готов" else "Google Chrome готов"
+            engineOnly -> "Docker Engine недоступен"
+            else -> if (docker) "Установить Docker" else "Установить Google Chrome"
+        },
+        description = when {
+            preparing -> progressDescription(setup)
+            failed || finished || restart -> setup.message.orEmpty()
+            engineOnly -> "Если Docker только что установлен, выйдите из сеанса Debian и войдите снова. Если ошибка останется, проверьте службу Docker и доступ пользователя к ней"
+            docker -> "Лаунчер установит Docker Engine и Compose из репозитория Debian 13 и добавит текущего пользователя в группу docker. Потребуются права администратора и повторный вход в сеанс"
+            else -> "Лаунчер скачает официальный пакет Google Chrome и установит его через apt. Потребуются права администратора"
+        },
+        noticeText = ChromeSetupPlanner.TERMS_NOTICE.takeIf { !docker && !preparing },
+        noticeUrl = ChromeSetupPlanner.TERMS_URL.takeIf { !docker && !preparing },
+        buttonLabel = when { preparing -> "Подготовка…"; restart || finished || engineOnly -> null
+            failed -> "Повторить"; else -> "Установить" },
+        buttonEnabled = !state.busy,
+        onClick = onPrepare,
+    )
 }
 
 private fun nodePresentation(
@@ -1231,7 +1327,7 @@ private val ComponentStatus.label: String
         ComponentStatus.STOPPED -> "Остановлен"
         ComponentStatus.STARTING -> "Запускается"
         ComponentStatus.RUNNING -> "Работает"
-        ComponentStatus.STOPPING -> "Останавливается"
+        ComponentStatus.STOPPING -> "Остановка"
         ComponentStatus.FAILED -> "Ошибка"
     }
 

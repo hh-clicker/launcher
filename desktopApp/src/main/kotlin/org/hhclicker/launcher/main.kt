@@ -40,6 +40,7 @@ import org.hhclicker.launcher.design.BrandIcon
 import org.hhclicker.launcher.design.LauncherTheme
 import org.hhclicker.launcher.design.brandIconPainter
 import org.hhclicker.launcher.controller.PreflightLauncherController
+import org.hhclicker.launcher.runtime.ExternalBrowserOpener
 import org.hhclicker.launcher.runtime.LauncherDataPaths
 import org.hhclicker.launcher.runtime.SingleInstanceDecision
 import org.hhclicker.launcher.runtime.SingleInstanceGuard
@@ -136,9 +137,15 @@ private fun showStartupFailure(message: String) {
  * profile and the validated Codex device-login address.
  */
 private fun openInBrowser(url: String) {
-    runCatching {
-        val desktop = java.awt.Desktop.getDesktop()
-        if (desktop.isSupported(java.awt.Desktop.Action.BROWSE)) desktop.browse(java.net.URI(url))
+    ExternalBrowserOpener.open(url) { failedUrl ->
+        SwingUtilities.invokeLater {
+            JOptionPane.showMessageDialog(
+                null,
+                "Не удалось открыть страницу в браузере. Откройте ссылку вручную:\n$failedUrl",
+                "HH Clicker",
+                JOptionPane.WARNING_MESSAGE,
+            )
+        }
     }
 }
 

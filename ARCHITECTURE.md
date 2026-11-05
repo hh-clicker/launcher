@@ -6,10 +6,37 @@ The UI consumes `LauncherState` and sends intents through `LauncherController`. 
 refreshes, port reassignment, preparation of WSL/Docker/Node/Chrome, Codex login/logout and start/stop of the complete
 environment. The UI does not know whether a component is a Docker service, HTTP endpoint or Windows process.
 
+`LauncherTheme` uses bundled Inter 4.1 Regular, SemiBold and Bold for the Compose UI so font metrics do not depend on
+the host operating system's default sans-serif family. The font files live in `shared` Compose resources; the bundled
+SIL Open Font License is in `shared/src/commonMain/composeResources/files/licenses/inter_ofl.txt`.
+
+The JVM launcher detects the host platform before checking prerequisites. Windows keeps the WSL 2 and Docker Desktop
+requirements and its existing preparation actions. Linux checks Docker CLI, Compose v2, a reachable Linux Docker
+Engine, Node.js, Google Chrome, the workspace and local configuration without running Windows probes. Linux data is
+kept under `$XDG_DATA_HOME/hh-clicker/data` or `~/.local/share/hh-clicker/data`. Debian 13 x86_64 has its own explicit
+setup actions: Docker Engine and Compose from the Debian packages, a pinned per-user Node.js archive checked against
+the official SHA-256 list, and the official Google Chrome Debian package. Docker and Chrome request administrator
+rights through `pkexec`; Docker group membership takes effect in a new login session. Other Linux distributions do
+not get an automatic package action. macOS is identified separately but remains blocked until its
+runtime and packaging have been implemented.
+Port availability means that no process is listening, not that a GUI user can bind the port immediately. Linux reads
+listening sockets for all configured ports from `/proc/net/tcp` and `/proc/net/tcp6`; this also works for privileged
+ports such as 80. On Windows, a failed test bind is checked against `netstat` listeners before reporting a conflict,
+because a recently closed connection may keep the bind unavailable after Compose has stopped. An unreadable socket
+table or failed `netstat` query does not declare the port free.
+External links use `xdg-open` on Linux and `open` on macOS to reach the host's default browser; Windows retains
+`Desktop.browse`. An opener failure is shown in the launcher with the URL so device login can continue manually.
+The Debian 13 AppImage build stages the same service payload through Node.js rather than the Windows-only PowerShell
+script, then wraps Compose Desktop's Linux application image in an AppDir. A bundle marker makes the launcher use its
+packaged services ahead of any checkout in the current directory; `HH_CLICKER_HOME` still overrides that choice.
+
 `PreflightLauncherController` is the desktop implementation. It runs a read-only preflight at startup, locates the
 workspace and checks Docker CLI, Docker Compose, the Docker Engine, Node.js, Chrome, configuration files and Browser
 Agent artifacts without reading or printing secret values. Start/stop control the infra Compose project (PostgreSQL,
 Backend and Frontend), the Generation Agent Compose project and one launcher-owned Browser Agent host process.
+On Linux, Compose overrides attach Backend and Generation Agent to a dedicated infra-managed network and make Backend call
+`http://generation-agent:17374`. The infra project starts first and stops last. The Generation Agent host port
+remains bound to `127.0.0.1` for local launcher access. Windows retains its `host.docker.internal` route.
 `FakeLauncherController` remains a UI/development implementation, not the pending runtime boundary.
 
 ### Windows Java networking compatibility

@@ -11,17 +11,27 @@ class WindowsPortOwnerProbe(
     private val processCommand: (Long) -> String? = ::commandForProcess,
 ) {
     fun owner(port: Int): LocalPortOwner? {
+        val output = listeningSockets() ?: return null
+        val processId = listeningProcessId(output, port) ?: return null
+        val processName = processCommand(processId)
+            ?.replace('\\', '/')
+            ?.substringAfterLast('/')
+            ?.takeIf(String::isNotBlank)
+        return LocalPortOwner(processId, processName)
+    }
+
+    /** Null means the query failed; true means a completed query found no listener. */
+    fun isAvailable(port: Int): Boolean? = listeningSockets()?.let { listeningProcessId(it, port) == null }
+
+    private fun listeningSockets(): String? {
         val netstat = environment("SystemRoot")
             ?.takeIf(String::isNotBlank)
             ?.let { Path.of(it, "System32", "netstat.exe").toString() }
             ?: "netstat.exe"
-        val result = commandProbe.execute(listOf(netstat, "-ano", "-p", "tcp"))
-        if (!result.successful) return null
-        val processId = listeningProcessId(result.output, port) ?: return null
-        val processName = processCommand(processId)
-            ?.let { command -> runCatching { Path.of(command).fileName.toString() }.getOrNull() }
-            ?.takeIf(String::isNotBlank)
-        return LocalPortOwner(processId, processName)
+        // Include both IPv4 and IPv6 listeners; `-p tcp` can omit TCPv6 on Windows.
+        val result = commandProbe.execute(listOf(netstat, "-ano"))
+        if (!result.successful || result.output.length >= NETSTAT_OUTPUT_LIMIT) return null
+        return result.output
     }
 
     internal fun listeningProcessId(output: String, port: Int): Long? = output.lineSequence().firstNotNullOfOrNull { line ->
@@ -29,11 +39,13 @@ class WindowsPortOwnerProbe(
         if (columns.size < 5 || !columns[0].equals("TCP", ignoreCase = true)) return@firstNotNullOfOrNull null
         val localPort = columns[1].substringAfterLast(':').toIntOrNull()
         val foreignPort = columns[2].substringAfterLast(':').toIntOrNull()
-        if (localPort == port && foreignPort == 0) columns.last().toLongOrNull() else null
+        if (localPort == port && foreignPort == 0 && columns[3].equals("LISTENING", ignoreCase = true)) {
+            columns.last().toLongOrNull()
+        } else null
     }
 
     private companion object {
-        const val NETSTAT_OUTPUT_LIMIT = 128_000
+        const val NETSTAT_OUTPUT_LIMIT = 1_000_000
         val WHITESPACE = Regex("\\s+")
 
         fun commandForProcess(processId: Long): String? = runCatching {

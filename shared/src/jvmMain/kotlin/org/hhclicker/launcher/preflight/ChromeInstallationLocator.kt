@@ -2,6 +2,8 @@ package org.hhclicker.launcher.preflight
 
 import java.nio.file.Files
 import java.nio.file.Path
+import org.hhclicker.launcher.model.HostPlatform
+import org.hhclicker.launcher.runtime.HostPlatformDetector
 
 /**
  * The single place that knows where a system Google Chrome may live.
@@ -13,13 +15,25 @@ import java.nio.file.Path
  */
 class ChromeInstallationLocator(
     private val environment: (String) -> String? = System::getenv,
+    private val platform: HostPlatform = HostPlatformDetector.detect(),
 ) {
 
     /** Every supported location, whether or not the file is there. */
     fun candidates(): List<Path> = buildList {
-        directory("PROGRAMFILES")?.let(::add)
-        directory("PROGRAMFILES(X86)")?.let(::add)
-        directory("LOCALAPPDATA")?.let(::add)
+        when (platform) {
+            HostPlatform.WINDOWS -> {
+                directory("PROGRAMFILES")?.let(::add)
+                directory("PROGRAMFILES(X86)")?.let(::add)
+                directory("LOCALAPPDATA")?.let(::add)
+            }
+            HostPlatform.LINUX -> {
+                add(Path.of("/opt/google/chrome/chrome"))
+                add(Path.of("/usr/bin/google-chrome"))
+                add(Path.of("/usr/bin/google-chrome-stable"))
+            }
+            HostPlatform.MACOS -> add(Path.of("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"))
+            HostPlatform.OTHER -> Unit
+        }
     }
 
     /** The first existing chrome.exe, or null. */

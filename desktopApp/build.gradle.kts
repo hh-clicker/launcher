@@ -27,10 +27,14 @@ require(distributionVersion.matches(Regex("\\d+\\.\\d+\\.\\d+"))) { "Distributio
 val installerResourcesRoot = layout.buildDirectory.dir("installer-resources")
 val windowsInstallerOutput = layout.buildDirectory.dir("compose/binaries/main/installer")
 val windowsApplicationImage = layout.buildDirectory.dir("compose/binaries/main/app/HH Clicker Launcher")
+val linuxApplicationImage = layout.buildDirectory.dir("compose/binaries/main/app/HH Clicker Launcher")
+val linuxAppDir = layout.buildDirectory.dir("appimage/HH-Clicker.AppDir")
+val linuxAppImageOutput = layout.buildDirectory.file("compose/binaries/main/appimage/HH-Clicker-$distributionVersion$distributionSuffix-x86_64.AppImage")
 val releaseDirectory = rootProject.layout.projectDirectory.dir("releases/${hhClickerVersion.get()}")
 val releaseCatalog = rootProject.layout.projectDirectory.dir("releases")
 val releaseDefinition = releaseDirectory.file("release.json")
 val releaseNotes = releaseDirectory.file("notes.ru.md")
+val linuxHost = System.getProperty("os.name").startsWith("Linux", ignoreCase = true)
 
 val prepareInstallerPayload by tasks.registering(Exec::class) {
     group = "distribution"
@@ -67,15 +71,40 @@ val prepareInstallerPayload by tasks.registering(Exec::class) {
     ) + if (nightly) listOf("-Nightly") else emptyList<String>())
 }
 
+val prepareLinuxPayload by tasks.registering(Exec::class) {
+    group = "distribution"
+    description = "Stages the Linux HH Clicker services and compiled Browser Agent"
+
+    val stagingScript = rootProject.layout.projectDirectory.file("installer/prepare-payload.mjs")
+    val workspaceRoot = rootProject.layout.projectDirectory.dir("..").asFile
+    val destination = installerResourcesRoot.map { it.dir("common").asFile }
+
+    inputs.files(stagingScript, releaseDefinition, releaseNotes)
+    inputs.dir(releaseCatalog)
+    outputs.dir(installerResourcesRoot)
+    outputs.upToDateWhen { false }
+
+    commandLine(
+        "node",
+        stagingScript.asFile.absolutePath,
+        workspaceRoot.absolutePath,
+        destination.get().absolutePath,
+        distributionVersion,
+        releaseDefinition.asFile.absolutePath,
+        releaseNotes.asFile.absolutePath,
+        if (nightly) "nightly" else "stable",
+    )
+}
+
 // Compose copies <appResourcesRootDir>/common into $APPDIR/resources. Only distribution tasks build the
 // expensive payload; ordinary run/hotRun must stay fast. The ordering makes the Sync observe fresh staging.
 tasks.matching { it.name == "prepareAppResources" }.configureEach {
-    mustRunAfter(prepareInstallerPayload)
+    mustRunAfter(if (linuxHost) prepareLinuxPayload else prepareInstallerPayload)
 }
 tasks.matching {
     it.name == "createDistributable"
 }.configureEach {
-    dependsOn(prepareInstallerPayload)
+    dependsOn(if (linuxHost) prepareLinuxPayload else prepareInstallerPayload)
     // Compose's jpackage task does not fingerprint our externally staged service tree reliably.
     outputs.upToDateWhen { false }
 }
@@ -114,6 +143,30 @@ val packageWindowsInstaller by tasks.registering(Exec::class) {
     )
 }
 
+val packageLinuxAppImage by tasks.registering(Exec::class) {
+    group = "distribution"
+    description = "Packages the Linux launcher and services as an AppImage"
+    dependsOn("createDistributable")
+    onlyIf { System.getProperty("os.name").startsWith("Linux", ignoreCase = true) }
+
+    val buildScript = rootProject.layout.projectDirectory.file("installer/build-linux-appimage.sh")
+    val linuxIcon = project.file("src/main/resources/hh-clicker.png")
+    inputs.files(buildScript, linuxIcon)
+    inputs.dir(linuxApplicationImage)
+    outputs.file(linuxAppImageOutput)
+    outputs.upToDateWhen { false }
+
+    commandLine(
+        "bash",
+        buildScript.asFile.absolutePath,
+        linuxApplicationImage.get().asFile.absolutePath,
+        linuxAppDir.get().asFile.absolutePath,
+        linuxIcon.absolutePath,
+        linuxAppImageOutput.get().asFile.absolutePath,
+        distributionVersion,
+    )
+}
+
 compose.desktop {
     application {
         mainClass = "org.hhclicker.launcher.MainKt"
@@ -129,6 +182,9 @@ compose.desktop {
 
             windows {
                 iconFile.set(project.file("src/main/resources/hh-clicker.ico"))
+            }
+            linux {
+                iconFile.set(project.file("src/main/resources/hh-clicker.png"))
             }
         }
     }

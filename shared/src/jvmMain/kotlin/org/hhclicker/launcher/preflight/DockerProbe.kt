@@ -8,6 +8,8 @@ import org.hhclicker.launcher.model.DockerDesktopState
 import org.hhclicker.launcher.model.DockerDiagnostics
 import org.hhclicker.launcher.model.DockerEngineState
 import org.hhclicker.launcher.model.DockerInstallScope
+import org.hhclicker.launcher.model.HostPlatform
+import org.hhclicker.launcher.runtime.HostPlatformDetector
 import org.hhclicker.launcher.setup.CommandOutcome
 import org.hhclicker.launcher.setup.DockerDiagnosticsParser
 import org.hhclicker.launcher.setup.DockerEngineProbe
@@ -26,6 +28,7 @@ class DockerProbe(
     private val settingsReader: DockerSettingsReader = DockerSettingsReader(),
     private val environment: (String) -> String? = System::getenv,
     private val processes: () -> List<String> = ::currentUserProcessCommands,
+    private val platform: HostPlatform = HostPlatformDetector.detect(),
 ) {
 
     /**
@@ -34,13 +37,17 @@ class DockerProbe(
      * Called after an installation, because a freshly installed Docker Desktop does not appear in the
      * PATH this process inherited and its location must be re-read rather than remembered.
      */
-    fun locateDesktopExecutable(): Path? = runCatching { locator.locate()?.desktopExecutable }.getOrNull()
+    fun locateDesktopExecutable(): Path? = if (platform == HostPlatform.WINDOWS) {
+        runCatching { locator.locate()?.desktopExecutable }.getOrNull()
+    } else null
 
     /**
      * Finds Docker Desktop's own CLI without relying on the PATH inherited when the launcher started.
      * This matters immediately after installation: Windows updates PATH for future processes only.
      */
-    fun locateCliExecutable(): Path? = runCatching { locator.locate()?.cliExecutable }.getOrNull()
+    fun locateCliExecutable(): Path? = if (platform == HostPlatform.WINDOWS) {
+        runCatching { locator.locate()?.cliExecutable }.getOrNull()
+    } else null
 
     fun probe(): DockerDiagnostics {
         val architecture = DockerDiagnosticsParser.architecture(
@@ -49,7 +56,8 @@ class DockerProbe(
             jvmArchitecture = System.getProperty("os.arch"),
         )
 
-        val installation = runCatching { locator.locate() }
+        val installation: Result<DockerInstallation?> = if (platform == HostPlatform.WINDOWS) runCatching { locator.locate() }
+            else Result.success(null)
 
         val desktopState = if (installation.isFailure) {
             DockerDesktopState.CHECK_FAILED
@@ -72,7 +80,8 @@ class DockerProbe(
             DockerDiagnosticsParser.compose(CommandOutcome.failedToStart())
         }
 
-        val desktopProcess = desktopProcessState()
+        val desktopProcess = if (platform == HostPlatform.WINDOWS) desktopProcessState()
+            else DockerDesktopProcessState.UNKNOWN
 
         val engine = if (cli.state == DockerCliState.AVAILABLE) {
             DockerDiagnosticsParser.engine(run(engineProbe, infoCommand(dockerCommand)), desktopProcess)
@@ -85,7 +94,11 @@ class DockerProbe(
         } else {
             DockerBackend.UNKNOWN
         }
-        val backend = runCatching { settingsReader.backend(defaultBackend) }.getOrNull() ?: DockerBackend.UNKNOWN
+        val backend = when (platform) {
+            HostPlatform.WINDOWS -> runCatching { settingsReader.backend(defaultBackend) }.getOrNull() ?: DockerBackend.UNKNOWN
+            HostPlatform.LINUX -> DockerBackend.NATIVE_LINUX
+            else -> DockerBackend.UNKNOWN
+        }
 
         return DockerDiagnostics(
             architecture = architecture,
@@ -113,7 +126,9 @@ class DockerProbe(
      */
     fun probeEngine(): DockerEngineProbe {
         val dockerCommand = locateCliExecutable()?.toAbsolutePath()?.toString() ?: DOCKER_ON_PATH
-        return DockerDiagnosticsParser.engine(run(engineProbe, infoCommand(dockerCommand)), desktopProcessState())
+        val process = if (platform == HostPlatform.WINDOWS) desktopProcessState()
+            else DockerDesktopProcessState.UNKNOWN
+        return DockerDiagnosticsParser.engine(run(engineProbe, infoCommand(dockerCommand)), process)
     }
 
     /**

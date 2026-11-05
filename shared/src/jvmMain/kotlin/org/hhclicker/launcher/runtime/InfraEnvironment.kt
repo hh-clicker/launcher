@@ -1,6 +1,7 @@
 package org.hhclicker.launcher.runtime
 
 import java.nio.file.Path
+import org.hhclicker.launcher.model.HostPlatform
 import org.hhclicker.launcher.preflight.DockerCliResolver
 
 data class InfraStartResult(
@@ -46,13 +47,15 @@ class InfraEnvironment(
     }
 
     suspend fun stop(workspace: Path, configuration: LauncherRuntimeConfiguration): String? {
+        val infraDirectory = workspace.resolve("infra")
         val result = commandRunner.execute(
             arguments = DockerComposeCommands.down(
                 dockerCli.executable(),
                 configuration.infraProjectName,
                 configuration.infraEnvironmentFile,
+                linuxComposeFiles(infraDirectory),
             ),
-            workingDirectory = workspace.resolve("infra"),
+            workingDirectory = infraDirectory,
             timeoutMs = COMPOSE_STOP_TIMEOUT_MS,
         )
         if (result.successful) return null
@@ -73,10 +76,16 @@ class InfraEnvironment(
             configuration.infraProjectName,
             configuration.infraEnvironmentFile,
             build,
+            linuxComposeFiles(infraDirectory),
         ),
         workingDirectory = infraDirectory,
         timeoutMs = COMPOSE_START_TIMEOUT_MS,
     )
+
+    private fun linuxComposeFiles(directory: Path): List<Path> =
+        if (HostPlatformDetector.detect() == HostPlatform.LINUX) {
+            listOf(directory.resolve("compose.yaml"), directory.resolve("compose.linux.yaml"))
+        } else emptyList()
 
     private companion object {
         const val COMPOSE_START_TIMEOUT_MS = 600_000L

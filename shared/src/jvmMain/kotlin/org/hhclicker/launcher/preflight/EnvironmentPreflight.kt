@@ -16,6 +16,7 @@ import org.hhclicker.launcher.model.DockerDiagnostics
 import org.hhclicker.launcher.model.DockerEngineState
 import org.hhclicker.launcher.model.DockerServiceSnapshot
 import org.hhclicker.launcher.model.EnvironmentCheck
+import org.hhclicker.launcher.model.HostPlatform
 import org.hhclicker.launcher.model.NodeRuntimeDiagnostics
 import org.hhclicker.launcher.model.PreflightState
 import org.hhclicker.launcher.model.PreflightStatus
@@ -30,6 +31,8 @@ import org.hhclicker.launcher.setup.NodeRuntimePolicy
 import org.hhclicker.launcher.setup.WslDiagnosticsParser
 import org.hhclicker.launcher.runtime.LauncherRuntimeConfiguration
 import org.hhclicker.launcher.runtime.LauncherRuntimeConfigurationStore
+import org.hhclicker.launcher.runtime.HostPlatformDetector
+import org.hhclicker.launcher.runtime.LinuxPackagePreparer
 
 data class PreflightResult(
     val workspace: Path?,
@@ -54,6 +57,7 @@ class EnvironmentPreflight(
     private val nodeRuntimeLocator: NodeRuntimeLocator = NodeRuntimeLocator(),
     private val configurationStore: LauncherRuntimeConfigurationStore = LauncherRuntimeConfigurationStore(),
     private val servicePortProbe: ServicePortProbe = ServicePortProbe(commandProbe),
+    private val platform: HostPlatform = HostPlatformDetector.detect(),
 ) {
     /** Applies a lightweight runtime port/container snapshot without repeating machine diagnostics. */
     fun withServiceInspection(
@@ -105,10 +109,10 @@ class EnvironmentPreflight(
 
     suspend fun check(): PreflightResult = withContext(Dispatchers.IO) {
         val workspace = workspaceLocator.locate()
-        val wsl = wslProbe.probe()
+        val wsl = if (platform == HostPlatform.WINDOWS) wslProbe.probe() else null
         val docker = dockerProbe.probe()
         // Bundle kind still comes from the located workspace, while Node itself comes from PATH or the
-        // isolated launcher-managed runtime under LOCALAPPDATA.
+        // isolated launcher-managed runtime in the host's user data directory.
         val node = nodeRuntimeLocator.probe(workspace).diagnostics
         val chrome = chromeProbe.probe()
         val configurationResult = workspace?.let { runCatching { configurationStore.loadOrCreate(it) } }
@@ -122,10 +126,15 @@ class EnvironmentPreflight(
             }
         }
         val checks = buildList {
-            add(virtualizationCheck(wsl))
-            add(wslCheck(wsl))
+            if (platform == HostPlatform.WINDOWS && wsl != null) {
+                add(virtualizationCheck(wsl))
+                add(wslCheck(wsl))
+            }
+            if (platform == HostPlatform.MACOS || platform == HostPlatform.OTHER) {
+                add(EnvironmentCheck("platform", "Операционная система", false, "Запуск через лаунчер пока не поддерживается на этой ОС"))
+            }
 
-            add(dockerDesktopCheck(docker))
+            if (platform == HostPlatform.WINDOWS) add(dockerDesktopCheck(docker))
             add(dockerCliCheck(docker))
             add(dockerComposeCheck(docker))
             add(dockerEngineCheck(docker))
@@ -176,6 +185,8 @@ class EnvironmentPreflight(
             state = PreflightState(
                 status = if (blocked) PreflightStatus.BLOCKED else PreflightStatus.READY,
                 checks = checks,
+                platform = platform,
+                linuxPackageAutoInstallSupported = platform == HostPlatform.LINUX && LinuxPackagePreparer.supportsAutoInstall(),
                 wsl = wsl,
                 docker = docker,
                 node = node,
@@ -263,7 +274,9 @@ class EnvironmentPreflight(
         passed = docker.cli == DockerCliState.AVAILABLE,
         message = when (docker.cli) {
             DockerCliState.AVAILABLE -> "Docker ${docker.cliVersion}"
-            DockerCliState.MISSING -> "Команда docker недоступна; установите Docker Desktop"
+            DockerCliState.MISSING -> if (platform == HostPlatform.LINUX) {
+                "Команда docker недоступна; установите Docker Engine и Compose plugin"
+            } else "Команда docker недоступна; установите Docker Desktop"
             DockerCliState.FAILED -> "Команда docker --version завершилась ошибкой"
         },
     )
@@ -291,13 +304,18 @@ class EnvironmentPreflight(
         passed = docker.ready,
         message = when {
             docker.engine == DockerEngineState.STARTING -> "Docker Desktop запускается; дождитесь готовности Engine"
-            docker.engine == DockerEngineState.UNAVAILABLE -> "Engine недоступен; запустите Docker Desktop"
+            docker.engine == DockerEngineState.UNAVAILABLE -> if (platform == HostPlatform.LINUX) {
+                "Engine недоступен; запустите Docker и проверьте доступ текущего пользователя к сокету"
+            } else "Engine недоступен; запустите Docker Desktop"
             docker.engine == DockerEngineState.FAILED -> "Не удалось выполнить docker info"
             docker.containerMode == ContainerMode.WINDOWS -> "Включён режим Windows containers; нужен Linux"
             docker.containerMode == ContainerMode.UNKNOWN -> "docker info не сообщил платформу контейнеров"
             docker.backend == DockerBackend.NOT_WSL_2 -> "Engine работает не на WSL 2; включите Use WSL 2 based engine"
-            docker.backend == DockerBackend.UNKNOWN -> "Backend WSL 2 не подтверждён в настройках Docker"
+            docker.backend == DockerBackend.UNKNOWN -> if (platform == HostPlatform.WINDOWS) {
+                "Backend WSL 2 не подтверждён в настройках Docker"
+            } else "Backend Docker не подтверждён"
             docker.compose != DockerComposeState.AVAILABLE -> "Engine работает, но Compose v2 недоступен"
+            docker.backend == DockerBackend.NATIVE_LINUX -> "Engine ${docker.engineVersion ?: "работает"}: Linux containers"
             else -> "Engine ${docker.engineVersion ?: "работает"}: Linux containers на WSL 2"
         },
     )
@@ -306,13 +324,15 @@ class EnvironmentPreflight(
      * The Node.js row.
      *
      * A compatible system runtime wins. Otherwise the row offers the launcher-managed portable
-     * download; it is isolated under LOCALAPPDATA and never changes the machine's PATH.
+     * download on Windows; it is isolated in the user data directory and never changes PATH.
      */
     private fun nodeCheck(node: NodeRuntimeDiagnostics): EnvironmentCheck = EnvironmentCheck(
         id = "node",
         label = "Node.js",
         passed = node.ready,
-        message = NodeRuntimePolicy.message(node),
+        message = if (platform != HostPlatform.WINDOWS && !node.ready) {
+            "Установите совместимый Node.js вручную и повторите проверку"
+        } else NodeRuntimePolicy.message(node),
     )
 
     /**
@@ -329,7 +349,8 @@ class EnvironmentPreflight(
         message = when (chrome.installation) {
             ChromeInstallationState.INSTALLED -> "Google Chrome установлен"
             ChromeInstallationState.NOT_INSTALLED ->
-                "Не найден; лаунчер может скачать и установить официальную версию"
+                if (platform != HostPlatform.WINDOWS) "Не найден; установите Google Chrome вручную"
+                else "Не найден; лаунчер может скачать и установить официальную версию"
 
             ChromeInstallationState.CHECK_FAILED ->
                 "Не удалось проверить, установлен ли Google Chrome"

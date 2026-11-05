@@ -41,6 +41,21 @@ class LauncherRuntimeConfigurationTest {
     }
 
     @Test
+    fun existing_generation_environment_gets_the_infra_network_project_on_reload() {
+        val local = createTempDirectory("hh-local")
+        val workspace = portableWorkspace("2.0.1", "legacy-password")
+        val store = LauncherRuntimeConfigurationStore(rootOverride = local)
+        val generationFile = store.loadOrCreate(workspace).generationEnvironmentFile
+        Files.writeString(generationFile, Files.readString(generationFile)
+            .lineSequence().filterNot { it.startsWith("HH_CLICKER_INFRA_PROJECT=") }
+            .joinToString("\n", postfix = "\n"))
+
+        store.loadOrCreate(workspace)
+
+        assertEquals("hh-clicker", environment(generationFile)["HH_CLICKER_INFRA_PROJECT"])
+    }
+
+    @Test
     fun portable_versions_share_identity_password_and_production_projects() {
         val local = createTempDirectory("hh-local")
         val firstWorkspace = portableWorkspace("0.1.0", "legacy-password")
@@ -56,6 +71,7 @@ class LauncherRuntimeConfigurationTest {
         assertEquals(first.directory, second.directory)
         assertEquals("hh-clicker", first.infraProjectName)
         assertEquals("hh-clicker-generation", first.generationProjectName)
+        assertEquals("hh-clicker", environment(second.generationEnvironmentFile)["HH_CLICKER_INFRA_PROJECT"])
         assertEquals("legacy-password", environment(first.infraEnvironmentFile)["POSTGRES_PASSWORD"])
         assertEquals("legacy-password", environment(second.infraEnvironmentFile)["POSTGRES_PASSWORD"])
         assertEquals("0.2.0", environment(second.infraEnvironmentFile)["HH_CLICKER_VERSION"])
@@ -81,6 +97,7 @@ class LauncherRuntimeConfigurationTest {
         assertNotEquals(production.directory, development.directory)
         assertEquals("hh-clicker-dev", development.infraProjectName)
         assertEquals("hh-clicker-generation-dev", development.generationProjectName)
+        assertEquals("hh-clicker-dev", environment(development.generationEnvironmentFile)["HH_CLICKER_INFRA_PROJECT"])
         assertEquals("portable-password", environment(production.infraEnvironmentFile)["POSTGRES_PASSWORD"])
         assertEquals("development-password", environment(development.infraEnvironmentFile)["POSTGRES_PASSWORD"])
     }

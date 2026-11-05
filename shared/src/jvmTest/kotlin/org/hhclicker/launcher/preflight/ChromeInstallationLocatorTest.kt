@@ -5,6 +5,7 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import org.hhclicker.launcher.model.HostPlatform
 
 class ChromeInstallationLocatorTest {
     @Test
@@ -19,7 +20,7 @@ class ChromeInstallationLocatorTest {
             "LOCALAPPDATA" to localAppData.toString(),
             "PATH" to root.resolve("untrusted-path").toString(),
         )
-        val locator = ChromeInstallationLocator(environment::get)
+        val locator = ChromeInstallationLocator(environment::get, HostPlatform.WINDOWS)
         val relative = "Google/Chrome/Application/chrome.exe"
 
         assertEquals(
@@ -39,8 +40,21 @@ class ChromeInstallationLocatorTest {
 
     @Test
     fun absent_or_invalid_environment_locations_produce_no_candidate() {
-        val locator = ChromeInstallationLocator { null }
+        val locator = ChromeInstallationLocator(environment = { null }, platform = HostPlatform.WINDOWS)
         assertEquals(emptyList(), locator.candidates())
         assertNull(locator.locate())
+    }
+
+    @Test
+    fun linux_uses_known_google_chrome_locations() {
+        val locator = ChromeInstallationLocator(environment = { null }, platform = HostPlatform.LINUX)
+        assertEquals(
+            listOf(
+                java.nio.file.Path.of("/opt/google/chrome/chrome"),
+                java.nio.file.Path.of("/usr/bin/google-chrome"),
+                java.nio.file.Path.of("/usr/bin/google-chrome-stable"),
+            ),
+            locator.candidates(),
+        )
     }
 }

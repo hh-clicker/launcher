@@ -5,6 +5,8 @@ import org.hhclicker.launcher.runtime.LocalPortAvailability
 import org.hhclicker.launcher.model.ComponentId
 import org.hhclicker.launcher.model.DockerServiceSnapshot
 import org.hhclicker.launcher.model.PortConflict
+import org.hhclicker.launcher.model.HostPlatform
+import org.hhclicker.launcher.runtime.HostPlatformDetector
 
 /**
  * One runtime observation: which host ports are occupied by something foreign, and which of this
@@ -35,7 +37,11 @@ class ServicePortProbe(
     private val portAvailable: (Int) -> Boolean = LocalPortAvailability::isAvailable,
     /** Shared with every executing Docker command so observation and execution can never disagree. */
     private val dockerExecutable: () -> String = DockerCliResolver()::executable,
-    private val portOwner: (Int) -> LocalPortOwner? = WindowsPortOwnerProbe()::owner,
+    private val portOwner: (Int) -> LocalPortOwner? = if (HostPlatformDetector.detect() == HostPlatform.WINDOWS) {
+        WindowsPortOwnerProbe()::owner
+    } else {
+        { null }
+    },
 ) {
     fun conflicts(configuration: LauncherRuntimeConfiguration): List<PortConflict> = inspect(configuration).conflicts
 

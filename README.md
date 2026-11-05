@@ -8,6 +8,8 @@
 
 Repository instructions for coding agents: [AGENTS.md](AGENTS.md).
 
+Linux AppImage, подготовка окружения и запуск без лаунчера: [инструкция для Linux](LINUX.md).
+
 Windows desktop launcher for the local HH Clicker environment. The UI is implemented with Compose Multiplatform.
 The desktop controller performs real environment checks and controls the infra Docker Compose project.
 
@@ -18,8 +20,9 @@ The desktop controller performs real environment checks and controls the infra D
 - Portable application image: `gradlew.bat :desktopApp:createDistributable`
 - Per-user Windows installer: `gradlew.bat :desktopApp:packageWindowsInstaller`
 
-The portable application is written to `desktopApp/build/compose/binaries/main/app/HH Clicker Launcher`.
-Keep the executable together with its `app` and `runtime` directories.
+### Linux
+
+AppImage, запуск из checkout и ручной запуск сервисов описаны в [инструкции для Linux](LINUX.md).
 
 The Inno Setup executable installs application files per user under `%LOCALAPPDATA%\HH Clicker\application`, creates
 Start menu and desktop shortcuts, and preserves mutable state under the sibling `data` directory. Before packaging,

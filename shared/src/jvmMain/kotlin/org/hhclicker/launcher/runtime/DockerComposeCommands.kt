@@ -10,16 +10,23 @@ import java.nio.file.Path
  * installed is used by its absolute path instead of a `docker` that is not yet on this process's PATH.
  */
 internal object DockerComposeCommands {
-    fun up(docker: String, projectName: String, environmentFile: Path, build: Boolean = true): List<String> =
+    fun up(
+        docker: String,
+        projectName: String,
+        environmentFile: Path,
+        build: Boolean = true,
+        composeFiles: List<Path> = emptyList(),
+    ): List<String> =
         withProjectAndEnvironment(
             docker,
             if (build) listOf("up", "-d", "--build") else listOf("up", "-d"),
             projectName,
             environmentFile,
+            composeFiles,
         )
 
-    fun down(docker: String, projectName: String, environmentFile: Path): List<String> =
-        withProjectAndEnvironment(docker, listOf("down"), projectName, environmentFile)
+    fun down(docker: String, projectName: String, environmentFile: Path, composeFiles: List<Path> = emptyList()): List<String> =
+        withProjectAndEnvironment(docker, listOf("down"), projectName, environmentFile, composeFiles)
 
     /** [subcommand] is the Compose verb and its options only; `docker compose` is prepended here. */
     private fun withProjectAndEnvironment(
@@ -27,6 +34,7 @@ internal object DockerComposeCommands {
         subcommand: List<String>,
         projectName: String,
         environmentFile: Path,
+        composeFiles: List<Path>,
     ): List<String> {
         require(docker.isNotBlank()) { "Не определён исполняемый файл Docker" }
         require(subcommand.isNotEmpty()) { "Не указана команда Compose" }
@@ -38,6 +46,10 @@ internal object DockerComposeCommands {
             add(projectName)
             add("--env-file")
             add(environmentFile.toAbsolutePath().normalize().toString())
+            composeFiles.forEach { file ->
+                add("-f")
+                add(file.toAbsolutePath().normalize().toString())
+            }
             addAll(subcommand)
         }
     }

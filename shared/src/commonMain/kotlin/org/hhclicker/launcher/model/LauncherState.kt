@@ -46,6 +46,9 @@ data class EnvironmentCheck(
 data class PreflightState(
     val status: PreflightStatus = PreflightStatus.NOT_CHECKED,
     val checks: List<EnvironmentCheck> = emptyList(),
+    val platform: HostPlatform = HostPlatform.WINDOWS,
+    /** Automatic Docker and Chrome package installation is available only on Debian 13 x86_64. */
+    val linuxPackageAutoInstallSupported: Boolean = false,
     /** Independent WSL facts behind the virtualization and WSL rows; null until the first check ran. */
     val wsl: WslDiagnostics? = null,
     /** Independent Docker facts behind the Docker rows; null until the first check ran. */

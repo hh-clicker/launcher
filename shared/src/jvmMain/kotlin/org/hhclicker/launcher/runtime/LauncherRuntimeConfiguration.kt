@@ -43,6 +43,7 @@ class LauncherRuntimeConfigurationStore(
     fun loadOrCreate(workspace: Path): LauncherRuntimeConfiguration {
         val kind = BundleLayout.kind(workspace)
         val profile = if (kind == BundleKind.PORTABLE) "production" else "development"
+        val infraProjectName = if (kind == BundleKind.PORTABLE) "hh-clicker" else "hh-clicker-dev"
         val directory = root().resolve("config").resolve(profile)
         Files.createDirectories(directory)
 
@@ -96,6 +97,7 @@ class LauncherRuntimeConfigurationStore(
                 "HH_CLICKER_INSTANCE_ID" to instanceId,
                 "HH_CLICKER_VERSION" to version,
                 "HH_CLICKER_PROFILE" to profile,
+                "HH_CLICKER_INFRA_PROJECT" to infraProjectName,
                 "GENERATION_PORT" to selectPort(legacy["GENERATION_PORT"], GENERATION_PORTS, claimedPorts).toString(),
                 "CODEX_CLI_VERSION" to legacy["CODEX_CLI_VERSION"].orDefault("0.163.0"),
                 "CODEX_MODEL" to legacy["CODEX_MODEL"].orDefault("gpt-6-luna"),
@@ -112,7 +114,8 @@ class LauncherRuntimeConfigurationStore(
             writeEnvironment(generationFile, values)
         }
         if (kind == BundleKind.PORTABLE) migrateGenerationDefaults(generationFile)
-        refreshManagedMetadata(generationFile, instanceId, version, profile)
+        refreshManagedMetadata(generationFile, instanceId, version, profile,
+            mapOf("HH_CLICKER_INFRA_PROJECT" to infraProjectName))
         synchronizeGenerationPort(infraFile, generationFile)
 
         return LauncherRuntimeConfiguration(
@@ -122,7 +125,7 @@ class LauncherRuntimeConfigurationStore(
             directory = directory,
             infraEnvironmentFile = infraFile,
             generationEnvironmentFile = generationFile,
-            infraProjectName = if (kind == BundleKind.PORTABLE) "hh-clicker" else "hh-clicker-dev",
+            infraProjectName = infraProjectName,
             generationProjectName = if (kind == BundleKind.PORTABLE) "hh-clicker-generation" else "hh-clicker-generation-dev",
             endpoints = ServiceEndpoints.from(infraFile, generationFile),
         )
@@ -192,8 +195,9 @@ class LauncherRuntimeConfigurationStore(
     private fun root(): Path {
         rootOverride?.let { return it }
         val dataRoot = LauncherDataPaths.dataRoot(environment)
-            ?: throw IllegalStateException("Windows не сообщил путь LOCALAPPDATA")
+            ?: throw IllegalStateException("Не удалось определить пользовательский каталог данных")
         val legacyRoot = LauncherDataPaths.applicationRoot(environment)
+            ?.takeIf { HostPlatformDetector.detect() == org.hhclicker.launcher.model.HostPlatform.WINDOWS }
         return if (!Files.exists(dataRoot.resolve("config")) && legacyRoot != null && Files.exists(legacyRoot.resolve("config"))) {
             legacyRoot
         } else {
@@ -238,14 +242,20 @@ class LauncherRuntimeConfigurationStore(
         })
     }
 
-    private fun refreshManagedMetadata(file: Path, instanceId: String, version: String, profile: String) {
+    private fun refreshManagedMetadata(
+        file: Path,
+        instanceId: String,
+        version: String,
+        profile: String,
+        additional: Map<String, String> = emptyMap(),
+    ) {
         val values = LinkedHashMap(readEnvironmentFile(file))
         if (values.isEmpty()) throw IllegalStateException("Повреждён постоянный файл ${file.fileName}")
         val expected = mapOf(
             "HH_CLICKER_INSTANCE_ID" to instanceId,
             "HH_CLICKER_VERSION" to version,
             "HH_CLICKER_PROFILE" to profile,
-        )
+        ) + additional
         if (expected.all { (key, value) -> values[key] == value }) return
         expected.forEach { (key, value) -> values[key] = value }
         writeEnvironment(file, values)

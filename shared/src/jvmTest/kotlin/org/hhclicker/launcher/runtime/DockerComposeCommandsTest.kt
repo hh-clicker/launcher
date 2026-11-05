@@ -44,6 +44,20 @@ class DockerComposeCommandsTest {
     }
 
     @Test
+    fun linux_compose_override_is_used_for_both_start_and_stop() {
+        val files = listOf(Path.of("compose.yaml"), Path.of("compose.linux.yaml"))
+        val expected = files.flatMap { listOf("-f", it.toAbsolutePath().normalize().toString()) }
+
+        val up = DockerComposeCommands.up(docker, "hh-clicker", environmentFile, build = false, composeFiles = files)
+        val down = DockerComposeCommands.down(docker, "hh-clicker", environmentFile, composeFiles = files)
+
+        assertEquals(expected, up.subList(6, 10))
+        assertEquals(expected, down.subList(6, 10))
+        assertEquals(listOf("up", "-d"), up.drop(10))
+        assertEquals(listOf("down"), down.drop(10))
+    }
+
+    @Test
     fun an_unusable_executable_or_project_name_is_refused_instead_of_guessed() {
         assertFailsWith<IllegalArgumentException> {
             DockerComposeCommands.up("  ", "hh-clicker", environmentFile)

@@ -8,6 +8,8 @@ import org.hhclicker.launcher.setup.NodeRuntimePolicy
 import org.hhclicker.launcher.setup.NodeVersionPolicy
 import org.hhclicker.launcher.runtime.NodePortableRuntime
 import org.hhclicker.launcher.runtime.LauncherDataPaths
+import org.hhclicker.launcher.model.HostPlatform
+import org.hhclicker.launcher.runtime.HostPlatformDetector
 
 /**
  * The runtime the Browser Agent will be started with, and how it was found.
@@ -29,12 +31,13 @@ data class NodeRuntimeProbe(
 class NodeRuntimeLocator(
     private val commandProbe: CommandProbe = CommandProbe(VERSION_PROBE_TIMEOUT_MS),
     private val environment: (String) -> String? = System::getenv,
+    private val platform: HostPlatform = HostPlatformDetector.detect(),
 ) {
 
     fun probe(workspace: Path?): NodeRuntimeProbe {
         val bundle = BundleLayout.kind(workspace)
         val pathVersion = versionOfPathNode()
-        val localPortable = localPortableExecutable(environment)
+        val localPortable = localPortableExecutable(environment, platform)
         val localPortableVersion = localPortable?.let(::versionOf)
         val diagnostics = NodeRuntimePolicy.evaluate(
             bundle = bundle,
@@ -66,11 +69,15 @@ class NodeRuntimeLocator(
     companion object {
         const val VERSION_PROBE_TIMEOUT_MS = 8_000L
 
-        fun localPortableExecutable(environment: (String) -> String? = System::getenv): Path? {
-            val applicationRoot = LauncherDataPaths.applicationRoot(environment) ?: return null
+        fun localPortableExecutable(
+            environment: (String) -> String? = System::getenv,
+            platform: HostPlatform = HostPlatformDetector.detect(),
+        ): Path? {
+            val applicationRoot = LauncherDataPaths.applicationRoot(environment, platform) ?: return null
+            val name = if (platform == HostPlatform.LINUX) "node" else "node.exe"
             return sequenceOf(
-                applicationRoot.resolve("data/runtime/node-${NodePortableRuntime.VERSION}/node.exe"),
-                applicationRoot.resolve("runtime/node-${NodePortableRuntime.VERSION}/node.exe"),
+                applicationRoot.resolve("data/runtime/node-${NodePortableRuntime.VERSION}/$name"),
+                applicationRoot.resolve("runtime/node-${NodePortableRuntime.VERSION}/$name"),
             ).firstOrNull { java.nio.file.Files.isRegularFile(it) }
         }
     }

@@ -2,6 +2,7 @@ package org.hhclicker.launcher.runtime
 
 import java.nio.file.Files
 import java.nio.file.Path
+import org.hhclicker.launcher.model.HostPlatform
 
 /** Stable per-user paths kept outside the replaceable application payload. */
 object LauncherDataPaths {
@@ -9,10 +10,26 @@ object LauncherDataPaths {
     const val DATA_DIRECTORY = "data"
     const val BROWSER_AGENT_HANDLE_FILE = "browser-agent.json"
 
-    fun applicationRoot(environment: (String) -> String? = System::getenv): Path? =
-        environment("LOCALAPPDATA")
-            ?.takeIf(String::isNotBlank)
-            ?.let { runCatching { Path.of(it).resolve(APPLICATION_DIRECTORY) }.getOrNull() }
+    fun applicationRoot(
+        environment: (String) -> String? = System::getenv,
+        platform: HostPlatform = HostPlatformDetector.detect(),
+        userHome: () -> String? = { System.getProperty("user.home") },
+    ): Path? = runCatching {
+        when (platform) {
+            HostPlatform.WINDOWS -> environment("LOCALAPPDATA")
+                ?.takeIf(String::isNotBlank)?.let { Path.of(it, APPLICATION_DIRECTORY) }
+            HostPlatform.LINUX -> {
+                val xdg = environment("XDG_DATA_HOME")?.takeIf(String::isNotBlank)
+                    ?.let(Path::of)?.takeIf(Path::isAbsolute)
+                val base = xdg ?: (environment("HOME") ?: userHome())
+                    ?.takeIf(String::isNotBlank)?.let { Path.of(it, ".local", "share") }
+                base?.resolve("hh-clicker")
+            }
+            HostPlatform.MACOS -> (environment("HOME") ?: userHome())
+                ?.takeIf(String::isNotBlank)?.let { Path.of(it, "Library", "Application Support", APPLICATION_DIRECTORY) }
+            HostPlatform.OTHER -> null
+        }
+    }.getOrNull()
 
     fun dataRoot(environment: (String) -> String? = System::getenv): Path? =
         applicationRoot(environment)?.resolve(DATA_DIRECTORY)
@@ -23,8 +40,12 @@ object LauncherDataPaths {
      * Every move is best-effort and refuses to replace an existing destination. This keeps startup
      * safe when an old browser still has a profile locked or a previous migration was interrupted.
      */
-    fun migrateLegacyLayout(environment: (String) -> String? = System::getenv) {
-        val legacyRoot = applicationRoot(environment) ?: return
+    fun migrateLegacyLayout(
+        environment: (String) -> String? = System::getenv,
+        platform: HostPlatform = HostPlatformDetector.detect(),
+    ) {
+        if (platform != HostPlatform.WINDOWS) return
+        val legacyRoot = applicationRoot(environment, platform) ?: return
         val targetRoot = legacyRoot.resolve(DATA_DIRECTORY)
 
         listOf("config", "browser-agent", "downloads", "launcher-cache").forEach { name ->

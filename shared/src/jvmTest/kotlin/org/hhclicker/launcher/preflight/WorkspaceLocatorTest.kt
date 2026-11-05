@@ -53,6 +53,22 @@ class WorkspaceLocatorTest {
         assertEquals(checkout.toAbsolutePath().normalize(), locator.locate())
     }
 
+    @Test
+    fun an_installed_bundle_uses_its_own_services_even_when_started_from_a_checkout() {
+        val checkout = workspace("checkout")
+        val packaged = workspace("installed-resources")
+        Files.writeString(packaged.resolve(BundleLayout.MARKER_FILE_NAME), "version=2.0.1\n")
+        val locator = WorkspaceLocator(
+            environment = { null },
+            systemProperty = { name ->
+                if (name == WorkspaceLocator.COMPOSE_RESOURCES_PROPERTY) packaged.toString() else null
+            },
+            workingDirectory = { checkout.resolve("launcher") },
+        )
+
+        assertEquals(packaged.toAbsolutePath().normalize(), locator.locate())
+    }
+
     private fun workspace(prefix: String): Path = workspaceAt(createTempDirectory(prefix))
 
     private fun workspaceAt(root: Path): Path = root.also {

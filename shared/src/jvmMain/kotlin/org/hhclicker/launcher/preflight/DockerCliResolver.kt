@@ -1,6 +1,8 @@
 package org.hhclicker.launcher.preflight
 
 import java.nio.file.Path
+import org.hhclicker.launcher.model.HostPlatform
+import org.hhclicker.launcher.runtime.HostPlatformDetector
 
 /**
  * The single place that decides which `docker.exe` every launcher command runs.
@@ -18,7 +20,10 @@ import java.nio.file.Path
  * performed inside this same process is picked up by the next call.
  */
 class DockerCliResolver(
-    private val locate: () -> Path? = { DockerInstallationLocator().locate()?.cliExecutable },
+    private val locate: () -> Path? = {
+        if (HostPlatformDetector.detect() == HostPlatform.WINDOWS) DockerInstallationLocator().locate()?.cliExecutable
+        else null
+    },
 ) {
     @Volatile
     private var cached: String? = null

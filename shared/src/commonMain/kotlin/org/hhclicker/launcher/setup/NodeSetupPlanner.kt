@@ -58,7 +58,7 @@ object NodeSetupPlanner {
         NodePreparationOutcome.DOWNLOAD_TOO_LARGE -> failed("Архив Node.js больше допустимого размера")
         NodePreparationOutcome.CHECKSUM_NOT_FOUND -> failed("Официальная контрольная сумма Node.js не найдена")
         NodePreparationOutcome.CHECKSUM_MISMATCH -> failed("SHA-256 архива Node.js не совпадает с официальным")
-        NodePreparationOutcome.ARCHIVE_INVALID -> failed("Архив Node.js повреждён или не содержит node.exe")
+        NodePreparationOutcome.ARCHIVE_INVALID -> failed("Архив Node.js повреждён или не содержит исполняемый файл node")
         NodePreparationOutcome.NOT_APPLICABLE -> failed("Не удалось подготовить локальный Node.js")
     }
 

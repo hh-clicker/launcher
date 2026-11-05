@@ -15,12 +15,15 @@ import org.hhclicker.launcher.model.CodexAuthStatus
 import org.hhclicker.launcher.model.DockerDiagnostics
 import org.hhclicker.launcher.model.DockerEngineState
 import org.hhclicker.launcher.model.DockerServiceSnapshot
+import org.hhclicker.launcher.model.HostPlatform
 import org.hhclicker.launcher.model.LauncherState
 import org.hhclicker.launcher.model.LauncherStatus
 import org.hhclicker.launcher.model.LauncherComponentState
 import org.hhclicker.launcher.model.PreflightStatus
 import org.hhclicker.launcher.model.SetupState
 import org.hhclicker.launcher.model.SetupStatus
+import org.hhclicker.launcher.model.SetupStep
+import org.hhclicker.launcher.model.SetupTarget
 import org.hhclicker.launcher.preflight.ChromeProbe
 import org.hhclicker.launcher.preflight.BundleLayout
 import org.hhclicker.launcher.preflight.CommandDiagnostics
@@ -42,6 +45,8 @@ import org.hhclicker.launcher.runtime.WindowsChromePreparer
 import org.hhclicker.launcher.runtime.WindowsDockerPreparer
 import org.hhclicker.launcher.runtime.WindowsWslPreparer
 import org.hhclicker.launcher.runtime.WindowsNodePreparer
+import org.hhclicker.launcher.runtime.LinuxNodePreparer
+import org.hhclicker.launcher.runtime.LinuxPackagePreparer
 import org.hhclicker.launcher.runtime.NodePreparationContext
 import org.hhclicker.launcher.runtime.LauncherRuntimeConfiguration
 import org.hhclicker.launcher.runtime.LauncherRuntimeConfigurationStore
@@ -89,6 +94,8 @@ class PreflightLauncherController(
     private val dockerPreparer: WindowsDockerPreparer = WindowsDockerPreparer(),
     private val chromePreparer: WindowsChromePreparer = WindowsChromePreparer(),
     private val nodePreparer: WindowsNodePreparer = WindowsNodePreparer(),
+    private val linuxNodePreparer: LinuxNodePreparer = LinuxNodePreparer(),
+    private val linuxPackagePreparer: LinuxPackagePreparer = LinuxPackagePreparer(),
     private val dockerUserSettings: DockerUserSettings = DockerUserSettings(),
 ) : LauncherController {
     private val operation = Mutex()
@@ -342,6 +349,10 @@ class PreflightLauncherController(
      * The shared [operation] mutex keeps this exclusive with WSL preparation, refresh, start and stop.
      */
     override suspend fun prepareDocker(acceptDockerLicense: Boolean) {
+        if (mutableState.value.preflight.platform == HostPlatform.LINUX) {
+            prepareLinuxPackage(SetupTarget.DOCKER, true)
+            return
+        }
         val action = operation.withLock {
             if (mutableState.value.setup.status == SetupStatus.PREPARING) return
             val decided = DockerSetupPlanner.decide(
@@ -405,6 +416,10 @@ class PreflightLauncherController(
      * green without restarting the launcher.
      */
     override suspend fun prepareChrome(acceptGoogleTerms: Boolean) {
+        if (mutableState.value.preflight.platform == HostPlatform.LINUX) {
+            prepareLinuxPackage(SetupTarget.CHROME, acceptGoogleTerms)
+            return
+        }
         val action = operation.withLock {
             if (mutableState.value.setup.status == SetupStatus.PREPARING) return
             val decided = ChromeSetupPlanner.decide(mutableState.value.preflight.chrome)
@@ -462,14 +477,16 @@ class PreflightLauncherController(
             decided
         }
 
-        val result = nodePreparer.prepare(
-            action,
-            NodePreparationContext(
+        val context = NodePreparationContext(
                 nodeReady = { withContext(Dispatchers.IO) { nodeRuntimeLocator.probe(workspace).diagnostics.ready } },
                 onStage = { publishSetup(NodeSetupPlanner.stageState(it)) },
                 onDownloadProgress = { downloaded, total -> publishSetup(NodeSetupPlanner.downloadState(downloaded, total)) },
-            ),
         )
+        val result = if (mutableState.value.preflight.platform == HostPlatform.LINUX) {
+            linuxNodePreparer.prepare(action, context)
+        } else {
+            nodePreparer.prepare(action, context)
+        }
         val finished = NodeSetupPlanner.stateFor(result)
         if (result.outcome != NodePreparationOutcome.INSTALLED_AND_READY &&
             result.outcome != NodePreparationOutcome.ALREADY_READY
@@ -479,6 +496,53 @@ class PreflightLauncherController(
         }
         operation.withLock { mutableState.value = mutableState.value.copy(setup = NodeSetupPlanner.rechecking()) }
         refreshEnvironment()
+        operation.withLock { mutableState.value = mutableState.value.copy(setup = finished) }
+    }
+
+    private suspend fun prepareLinuxPackage(target: SetupTarget, acceptedTerms: Boolean) {
+        operation.withLock {
+            if (mutableState.value.setup.inProgress) return
+            val required = when (target) {
+                SetupTarget.DOCKER -> listOf("docker-cli", "docker-compose")
+                SetupTarget.CHROME -> listOf("chrome")
+                else -> return
+            }
+            if (mutableState.value.preflight.checks.none { it.id in required && !it.passed }) return
+            if (target == SetupTarget.CHROME && !acceptedTerms) {
+                mutableState.value = mutableState.value.copy(setup = SetupState(
+                    SetupStatus.FAILED, message = "Подтвердите условия Google Chrome кнопкой установки", target = target,
+                ))
+                return
+            }
+            mutableState.value = mutableState.value.copy(setup = SetupState(
+                SetupStatus.PREPARING, message = "Подготавливаем пакеты Debian 13", target = target,
+            ))
+        }
+        val result = runCatching { when (target) {
+            SetupTarget.DOCKER -> linuxPackagePreparer.prepareDocker { step ->
+                publishSetup(SetupState(SetupStatus.PREPARING, step, "Устанавливаем Docker из репозитория Debian", target))
+            }
+            SetupTarget.CHROME -> linuxPackagePreparer.prepareChrome(
+                onStage = { step -> publishSetup(SetupState(SetupStatus.PREPARING, step, "Устанавливаем Google Chrome", target)) },
+                onDownloadProgress = { downloaded, total ->
+                    publishSetup(SetupState(SetupStatus.PREPARING, SetupStep.DOWNLOADING_CHROME,
+                        "Скачиваем Google Chrome", target, downloaded, total))
+                },
+            )
+            else -> return
+        } }.getOrElse { failure ->
+            LinuxPackagePreparer.Result(false, "Подготовка прервана: ${failure.message ?: "ошибка ввода-вывода"}")
+        }
+        val finished = SetupState(
+            status = when {
+                !result.success -> SetupStatus.FAILED
+                result.restartSession -> SetupStatus.RESTART_REQUIRED
+                else -> SetupStatus.SUCCEEDED
+            },
+            message = result.message,
+            target = target,
+        )
+        if (result.success) refreshEnvironment()
         operation.withLock { mutableState.value = mutableState.value.copy(setup = finished) }
     }
 
