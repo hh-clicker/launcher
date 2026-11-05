@@ -27,7 +27,7 @@ configVersion равен 1. Миграция 036 добавляет состоя
 
 ## Автоматизация
 
-Installer собирается в репозитории `.github` при push тега той же версии. Workflow
+Windows installer и Linux AppImage собираются в репозитории `.github` при push тега той же версии. Workflow
 получает launcher по тегу, сервисы — по SHA этого манифеста, публикует артефакты в draft.
 Порядок проверки, подписания и публикации описан в
 [регламенте выпуска](https://github.com/hh-clicker/.github/blob/master/RELEASING.md).

@@ -12,11 +12,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
+import org.hhclicker.launcher.model.ReleaseUpdateState
 import org.hhclicker.launcher.controller.FakeLauncherController
 import org.hhclicker.launcher.controller.LauncherController
 import org.hhclicker.launcher.design.LauncherTheme
 import org.hhclicker.launcher.model.ComponentId
 import org.hhclicker.launcher.model.CodexAuthStatus
+import org.hhclicker.launcher.model.DesktopIntegrationState
 import org.hhclicker.launcher.model.LauncherStatus
 import org.hhclicker.launcher.model.PreflightStatus
 import org.hhclicker.launcher.ui.LauncherScreen
@@ -37,10 +39,24 @@ fun LauncherContent(
     controller: LauncherController = remember { FakeLauncherController() },
     /** Opening a browser is a platform capability; the desktop entry point supplies it. */
     onOpenUrl: (String) -> Unit = {},
+    desktopIntegration: DesktopIntegrationState? = null,
+    onInstallDesktopIntegration: () -> Unit = {},
+    onCheckForUpdates: suspend (String) -> ReleaseUpdateState = { ReleaseUpdateState() },
 ) {
     val state by controller.state.collectAsState()
     val scope = rememberCoroutineScope()
     var page by remember { mutableStateOf(LauncherPage.MAIN) }
+    var releaseUpdate by remember { mutableStateOf(ReleaseUpdateState()) }
+
+    LaunchedEffect(state.version) {
+        releaseUpdate = try {
+            onCheckForUpdates(state.version)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ReleaseUpdateState()
+        }
+    }
 
     LaunchedEffect(controller) {
         controller.refreshEnvironment()
@@ -137,5 +153,8 @@ fun LauncherContent(
         onCancelCodexLogin = { scope.launch { controller.cancelCodexLogin() } },
         onLogoutCodex = { scope.launch { controller.logoutCodex() } },
         onOpenUrl = onOpenUrl,
+        desktopIntegration = desktopIntegration,
+        onInstallDesktopIntegration = onInstallDesktopIntegration,
+        releaseUpdate = releaseUpdate,
     )
 }

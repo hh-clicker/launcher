@@ -34,6 +34,8 @@ import androidx.compose.ui.window.WindowScope
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 import org.hhclicker.launcher.design.BrandIcon
@@ -42,6 +44,8 @@ import org.hhclicker.launcher.design.brandIconPainter
 import org.hhclicker.launcher.controller.PreflightLauncherController
 import org.hhclicker.launcher.runtime.ExternalBrowserOpener
 import org.hhclicker.launcher.runtime.LauncherDataPaths
+import org.hhclicker.launcher.runtime.LinuxDesktopIntegration
+import org.hhclicker.launcher.runtime.ReleaseUpdateChecker
 import org.hhclicker.launcher.runtime.SingleInstanceDecision
 import org.hhclicker.launcher.runtime.SingleInstanceGuard
 import org.hhclicker.launcher.runtime.SingleInstanceOutcome
@@ -67,6 +71,9 @@ fun main() {
             val windowState = rememberWindowState(width = 960.dp, height = 640.dp)
             val windowIcon = brandIconPainter()
             val launcherController = remember { PreflightLauncherController() }
+            val desktopIntegration = remember { LinuxDesktopIntegration() }
+            val releaseUpdateChecker = remember { ReleaseUpdateChecker() }
+            var desktopIntegrationState by remember { mutableStateOf(desktopIntegration.status()) }
             val applicationScope = rememberCoroutineScope()
             var closing by remember { mutableStateOf(false) }
             val closeLauncher: () -> Unit = {
@@ -106,7 +113,31 @@ fun main() {
                             onMinimize = { windowState.isMinimized = true },
                             onClose = closeLauncher,
                         )
-                        Box(Modifier.weight(1f)) { LauncherContent(launcherController, ::openInBrowser) }
+                        Box(Modifier.weight(1f)) {
+                            LauncherContent(
+                                controller = launcherController,
+                                onOpenUrl = ::openInBrowser,
+                                desktopIntegration = desktopIntegrationState,
+                                onInstallDesktopIntegration = {
+                                    val previous = desktopIntegrationState
+                                    if (previous != null && !previous.busy) {
+                                        desktopIntegrationState = previous.copy(busy = true, message = null, error = false)
+                                        applicationScope.launch {
+                                            val result = withContext(Dispatchers.IO) { runCatching { desktopIntegration.install() } }
+                                            desktopIntegrationState = if (result.isSuccess) {
+                                                previous.copy(installed = true, message = if (previous.installed)
+                                                    "Ярлык и AppImage обновлены" else "HH Clicker добавлен в меню приложений")
+                                            } else {
+                                                previous.copy(message = "Не удалось добавить HH Clicker в меню: ${result.exceptionOrNull()?.message ?: "неизвестная ошибка"}", error = true)
+                                            }
+                                        }
+                                    }
+                                },
+                                onCheckForUpdates = { version ->
+                                    withContext(Dispatchers.IO) { releaseUpdateChecker.check(version) }
+                                },
+                            )
+                        }
                     }
                 }
             }

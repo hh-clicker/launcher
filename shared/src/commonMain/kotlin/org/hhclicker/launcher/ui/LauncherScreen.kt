@@ -65,6 +65,9 @@ import org.hhclicker.launcher.model.ComponentStatus
 import org.hhclicker.launcher.model.CodexAuthState
 import org.hhclicker.launcher.model.CodexAuthStatus
 import org.hhclicker.launcher.model.CodexRuntimeInfo
+import org.hhclicker.launcher.model.DesktopIntegrationState
+import org.hhclicker.launcher.model.ReleaseUpdateState
+import org.hhclicker.launcher.model.UpdateUrgency
 import org.hhclicker.launcher.model.CheckSeverity
 import org.hhclicker.launcher.model.EnvironmentCheck
 import org.hhclicker.launcher.model.HostPlatform
@@ -105,12 +108,15 @@ fun LauncherScreen(
     onCancelCodexLogin: () -> Unit = {},
     onLogoutCodex: () -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
+    desktopIntegration: DesktopIntegrationState? = null,
+    onInstallDesktopIntegration: () -> Unit = {},
+    releaseUpdate: ReleaseUpdateState = ReleaseUpdateState(),
 ) {
     Box(
         modifier = Modifier.fillMaxSize().background(Color(0xFFF1F4F8)),
     ) {
         Row(Modifier.fillMaxSize()) {
-            Sidebar(state, page, onNavigate)
+            Sidebar(state, page, onNavigate, releaseUpdate, onOpenUrl)
             Column(
                 modifier = Modifier.fillMaxSize().padding(start = 22.dp, top = 20.dp, end = 22.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -133,6 +139,8 @@ fun LauncherScreen(
                         onCancelCodexLogin = onCancelCodexLogin,
                         onLogoutCodex = onLogoutCodex,
                         onOpenUrl = onOpenUrl,
+                        desktopIntegration = desktopIntegration,
+                        onInstallDesktopIntegration = onInstallDesktopIntegration,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -142,7 +150,13 @@ fun LauncherScreen(
 }
 
 @Composable
-private fun Sidebar(state: LauncherState, page: LauncherPage, onNavigate: (LauncherPage) -> Unit) {
+private fun Sidebar(
+    state: LauncherState,
+    page: LauncherPage,
+    onNavigate: (LauncherPage) -> Unit,
+    releaseUpdate: ReleaseUpdateState,
+    onOpenUrl: (String) -> Unit,
+) {
     val settingsNeedAttention = state.preflight.status == PreflightStatus.BLOCKED ||
         state.status == LauncherStatus.FAILED ||
         state.setup.status == SetupStatus.FAILED ||
@@ -166,13 +180,45 @@ private fun Sidebar(state: LauncherState, page: LauncherPage, onNavigate: (Launc
             onNavigate(LauncherPage.SETTINGS)
         }
         Spacer(Modifier.weight(1f))
-        Text(
-            "Версия ${state.version.ifBlank { "—" }}",
-            color = LauncherColors.Muted,
-            style = MaterialTheme.typography.bodySmall,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Версия ${state.version.ifBlank { "—" }}",
+                modifier = Modifier.weight(1f),
+                color = LauncherColors.Muted,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+            )
+            val iconColor = when (releaseUpdate.urgency) {
+                UpdateUrgency.CRITICAL -> LauncherColors.Red
+                UpdateUrgency.NORMAL -> LauncherColors.Primary
+                UpdateUrgency.NONE -> LauncherColors.Muted
+            }
+            Box(
+                Modifier.size(24.dp).clip(CircleShape).clickable { onOpenUrl(RELEASES_URL) },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (releaseUpdate.urgency == UpdateUrgency.CRITICAL) {
+                    Text("!", color = iconColor, fontWeight = FontWeight.Bold)
+                } else {
+                    TablerIcon(if (releaseUpdate.urgency == UpdateUrgency.NORMAL) Res.drawable.icon_refresh
+                        else Res.drawable.icon_external_link, iconColor, 17.dp)
+                }
+            }
+        }
+        if (releaseUpdate.urgency != UpdateUrgency.NONE) {
+            Text(
+                if (releaseUpdate.urgency == UpdateUrgency.CRITICAL)
+                    "Требуется обновление до ${releaseUpdate.latestVersion}"
+                else "Доступна версия ${releaseUpdate.latestVersion}",
+                color = if (releaseUpdate.urgency == UpdateUrgency.CRITICAL) LauncherColors.Red else LauncherColors.Primary,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 2,
+            )
+        }
     }
 }
+
+private const val RELEASES_URL = "https://github.com/hh-clicker/.github/releases"
 
 @Composable
 private fun NavigationItem(
@@ -236,6 +282,8 @@ private fun EnvironmentScreen(
     onCancelCodexLogin: () -> Unit,
     onLogoutCodex: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    desktopIntegration: DesktopIntegrationState?,
+    onInstallDesktopIntegration: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val checks = state.preflight.checks
@@ -322,6 +370,22 @@ private fun EnvironmentScreen(
                     onLogin = onStartCodexLogin,
                     onCancel = onCancelCodexLogin,
                     onLogout = onLogoutCodex,
+                    onOpenUrl = onOpenUrl,
+                )
+                Divider()
+            }
+            if (desktopIntegration != null) {
+                SetupSection(
+                    presentation = SetupPresentation(
+                        accent = if (desktopIntegration.error) LauncherColors.Red else LauncherColors.Text,
+                        title = "Запуск из меню приложений",
+                        description = desktopIntegration.message ?: if (desktopIntegration.installed)
+                            "Ярлык установлен. Новую AppImage можно добавить этой же кнопкой"
+                            else "Добавьте HH Clicker в меню приложений текущего пользователя",
+                        buttonLabel = if (desktopIntegration.busy) "Добавляем…" else if (desktopIntegration.installed) "Обновить" else "Добавить",
+                        buttonEnabled = !desktopIntegration.busy && !state.busy,
+                        onClick = onInstallDesktopIntegration,
+                    ),
                     onOpenUrl = onOpenUrl,
                 )
                 Divider()

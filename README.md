@@ -1,9 +1,9 @@
 # HH Clicker Launcher
 
 [![Release build](https://github.com/hh-clicker/.github/actions/workflows/release.yml/badge.svg)](https://github.com/hh-clicker/.github/actions/workflows/release.yml)
-![Windows](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)
 
-Состав выпуска определяется [каталогом релизов](releases/README.md). Installer публикуется через
+Состав выпуска определяется [каталогом релизов](releases/README.md). Windows installer и Linux AppImage публикуются через
 [release workflow](https://github.com/hh-clicker/.github/actions/workflows/release.yml) в репозитории `.github`.
 
 Repository instructions for coding agents: [AGENTS.md](AGENTS.md).
