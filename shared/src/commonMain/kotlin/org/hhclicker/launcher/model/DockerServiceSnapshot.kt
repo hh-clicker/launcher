@@ -12,9 +12,10 @@ sealed interface DockerServiceSnapshot {
 
     /**
      * Docker answered. [runningServices] holds the Compose service names owned by this instance that are
-     * running right now, and it is complete: a service missing from the set is stopped.
+     * running right now. A missing service is stopped unless listed in [unobservedServices]:
+     * host-port fallback cannot observe internal services such as PostgreSQL.
      */
-    data class Observed(val runningServices: Set<String>) : DockerServiceSnapshot
+    data class Observed(val runningServices: Set<String>, val unobservedServices: Set<String> = emptySet()) : DockerServiceSnapshot
 
     /**
      * Docker could not be asked, or answered something that cannot be trusted.
@@ -26,7 +27,7 @@ sealed interface DockerServiceSnapshot {
 
     /** True while the service runs, false while it is stopped, and null while the answer is [Unknown]. */
     fun isRunning(service: String): Boolean? = when (this) {
-        is Observed -> service in runningServices
+        is Observed -> if (service in unobservedServices) null else service in runningServices
         is Unknown -> null
     }
 

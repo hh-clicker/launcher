@@ -66,7 +66,7 @@ class StopAllTest {
 
         val state = controller.state.value
         assertEquals(LauncherStatus.FAILED, state.status)
-        listOf(ComponentId.BACKEND, ComponentId.FRONTEND, ComponentId.GENERATION_AGENT).forEach { id ->
+        listOf(ComponentId.POSTGRES, ComponentId.BACKEND, ComponentId.FRONTEND, ComponentId.GENERATION_AGENT).forEach { id ->
             val component = state.components.single { it.id == id }
             assertEquals(ComponentStatus.FAILED, component.status, "$id")
             // The reason is carried on the component, which is where the screen now shows it.

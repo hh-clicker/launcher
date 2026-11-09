@@ -119,7 +119,8 @@ class ServicePortProbe(
         return ServicePortInspection(
             conflicts = conflicts,
             services = if (trustworthy) {
-                DockerServiceSnapshot.Observed(runningServices)
+                DockerServiceSnapshot.Observed(runningServices,
+                    unobservedServices = if (owned.successful) emptySet() else setOf("postgres"))
             } else {
                 DockerServiceSnapshot.Unknown(
                     diagnostics.firstOrNull() ?: "Docker не ответил на запрос состояния контейнеров",

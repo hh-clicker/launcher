@@ -37,6 +37,8 @@ import org.hhclicker.launcher.preflight.EnvironmentPreflight
 import org.hhclicker.launcher.preflight.ServiceEndpoints
 import org.hhclicker.launcher.preflight.ServicePortInspection
 import org.hhclicker.launcher.preflight.ServicePortProbe
+import org.hhclicker.launcher.preflight.PostgresHealth
+import org.hhclicker.launcher.preflight.PostgresHealthProbe
 import org.hhclicker.launcher.preflight.NodeRuntimeLocator
 import org.hhclicker.launcher.runtime.BrowserAgentProcess
 import org.hhclicker.launcher.runtime.ChromePreparationContext
@@ -95,6 +97,7 @@ class PreflightLauncherController(
     private val infraEnvironment: InfraEnvironment = InfraEnvironment(dockerCli = dockerCli),
     private val generationEnvironment: GenerationEnvironment = GenerationEnvironment(dockerCli = dockerCli),
     private val generationAuthClient: GenerationAuthClient = GenerationAuthClient(),
+    private val postgresHealthProbe: PostgresHealthProbe = PostgresHealthProbe(dockerExecutable = dockerCli::executable),
     private val browserAgent: BrowserAgentProcess = BrowserAgentProcess(),
     private val wslPreparer: WindowsWslPreparer = WindowsWslPreparer(),
     private val dockerPreparer: WindowsDockerPreparer = WindowsDockerPreparer(),
@@ -217,13 +220,18 @@ class PreflightLauncherController(
         } else {
             null
         }
-        val generationRuntime = if (inspection != null && before.components.any {
-                it.id == ComponentId.GENERATION_AGENT && it.status == ComponentStatus.RUNNING
-            }) {
+        val postgresHealth = if (inspection?.services?.isRunning("postgres") == true) {
+            withContext(Dispatchers.IO) { postgresHealthProbe.probe(currentConfiguration.instanceId) }
+        } else null
+        val generationObservedRunning = inspection?.services?.isRunning("generation-agent") == true
+        val generationRuntime = if (generationObservedRunning) {
             generationAuthClient.runtimeInfo(currentEndpoints.generationUrl)
         } else {
             null
         }
+        val generationAuth = if (generationObservedRunning && !before.codexAuth.busy) {
+            generationAuthClient.cachedStatus(currentEndpoints.generationUrl)
+        } else null
 
         if (!operation.tryLock()) return
         try {
@@ -247,6 +255,7 @@ class PreflightLauncherController(
                     currentEndpoints,
                     services,
                     browserAgent.isRunning(),
+                    postgresHealth,
                 )
                 val generationRunning = components.any {
                     it.id == ComponentId.GENERATION_AGENT && it.status == ComponentStatus.RUNNING
@@ -259,10 +268,7 @@ class PreflightLauncherController(
                         currentConfiguration,
                         inspection,
                     ),
-                    codexAuth = if (generationRunning) latest.codexAuth else CodexAuthState(
-                        CodexAuthStatus.UNAVAILABLE,
-                        message = "Сначала запустите Generation Agent",
-                    ),
+                    codexAuth = reconcileObservedCodexAuth(latest.codexAuth, before.codexAuth, generationRunning, generationAuth),
                     codexRuntime = if (generationRunning) generationRuntime else null,
                     // An undetermined observation is not proof that an already reported failure is gone.
                     error = if (services.trustworthy) null else latest.error,
@@ -452,7 +458,8 @@ class PreflightLauncherController(
         operation.withLock {
             mutableState.value = mutableState.value.copy(setup = SetupState(
                 if (result.success) SetupStatus.SUCCEEDED else SetupStatus.FAILED,
-                message = result.message, target = SetupTarget.CHROME,
+                message = if (result.success) "${result.message}. ${ChromeSetupPlanner.FIRST_RUN_HINT}" else result.message,
+                target = SetupTarget.CHROME,
             ))
         }
     }
@@ -632,7 +639,8 @@ class PreflightLauncherController(
                 result.restartSession -> SetupStatus.RESTART_REQUIRED
                 else -> SetupStatus.SUCCEEDED
             },
-            message = result.message,
+            message = if (result.success && target == SetupTarget.CHROME)
+                "${result.message}. ${ChromeSetupPlanner.FIRST_RUN_HINT}" else result.message,
             target = target,
         )
         if (result.success) refreshEnvironment()
@@ -754,11 +762,23 @@ class PreflightLauncherController(
         mutableState.value = mutableState.value.copy(status = LauncherStatus.STARTING, error = null)
         val backendRunning = componentRunning(ComponentId.BACKEND)
         val frontendRunning = componentRunning(ComponentId.FRONTEND)
-        if (!backendRunning || !frontendRunning) {
+        if (!backendRunning || !frontendRunning || !componentRunning(ComponentId.POSTGRES)) {
+            updateComponent(ComponentId.POSTGRES, ComponentStatus.STARTING)
             if (!backendRunning) updateComponent(ComponentId.BACKEND, ComponentStatus.STARTING)
             if (!frontendRunning) updateComponent(ComponentId.FRONTEND, ComponentStatus.STARTING)
 
             val result = infraEnvironment.start(currentWorkspace, currentConfiguration)
+            // Compose waits for pg_isready; Backend readiness also checks its database connection.
+            val databaseHealth = if (result.backendReady) PostgresHealth.HEALTHY else
+                withContext(Dispatchers.IO) { postgresHealthProbe.probe(currentConfiguration.instanceId) }
+            updateComponent(ComponentId.POSTGRES,
+                when (databaseHealth) {
+                    PostgresHealth.HEALTHY -> ComponentStatus.RUNNING
+                    PostgresHealth.STARTING -> ComponentStatus.STARTING
+                    else -> ComponentStatus.FAILED
+                },
+                if (databaseHealth == PostgresHealth.HEALTHY) null else "PostgreSQL не подтвердил готовность к подключениям",
+            )
             updateComponent(
                 ComponentId.BACKEND,
                 if (result.backendReady) ComponentStatus.RUNNING else ComponentStatus.FAILED,
@@ -830,6 +850,7 @@ class PreflightLauncherController(
         updateComponent(ComponentId.GENERATION_AGENT, ComponentStatus.STOPPING)
         updateComponent(ComponentId.FRONTEND, ComponentStatus.STOPPING)
         updateComponent(ComponentId.BACKEND, ComponentStatus.STOPPING)
+        updateComponent(ComponentId.POSTGRES, ComponentStatus.STOPPING)
 
         // Independent attempts: one failure must not prevent the others from being tried.
         val browserError = runCatching { browserAgent.stop() }
@@ -852,6 +873,8 @@ class PreflightLauncherController(
         }
 
         val stopErrors = listOfNotNull(browserError, generationError, infraError).distinct()
+        updateComponent(ComponentId.POSTGRES,
+            if (infraError == null) ComponentStatus.STOPPED else ComponentStatus.FAILED, infraError)
         val error = stopErrors.takeIf { it.isNotEmpty() }?.joinToString("; ")
         updateComponent(
             ComponentId.BROWSER_AGENT,
@@ -922,8 +945,10 @@ internal fun reconcileRuntimeComponents(
     endpoints: ServiceEndpoints,
     dockerServices: DockerServiceSnapshot,
     browserAgentRunning: Boolean,
+    postgresHealth: PostgresHealth? = null,
 ): List<LauncherComponentState> = current.map { component ->
     val dockerService = when (component.id) {
+        ComponentId.POSTGRES -> "postgres"
         ComponentId.BACKEND -> "backend"
         ComponentId.FRONTEND -> "frontend"
         ComponentId.GENERATION_AGENT -> "generation-agent"
@@ -932,6 +957,7 @@ internal fun reconcileRuntimeComponents(
     val observed = dockerService?.let(dockerServices::isRunning)
     component.copy(
         location = when (component.id) {
+            ComponentId.POSTGRES -> "Внутри Docker"
             ComponentId.BACKEND -> endpoints.backendUrl
             ComponentId.FRONTEND -> endpoints.frontendUrl
             ComponentId.GENERATION_AGENT -> endpoints.generationUrl
@@ -940,15 +966,55 @@ internal fun reconcileRuntimeComponents(
         status = when {
             dockerService == null -> if (browserAgentRunning) ComponentStatus.RUNNING else ComponentStatus.STOPPED
             observed == null -> component.status
+            component.id == ComponentId.POSTGRES && observed -> when (postgresHealth) {
+                PostgresHealth.HEALTHY -> ComponentStatus.RUNNING
+                PostgresHealth.UNHEALTHY -> ComponentStatus.FAILED
+                PostgresHealth.STARTING -> ComponentStatus.STARTING
+                else -> if (component.status == ComponentStatus.STOPPED) ComponentStatus.STARTING else component.status
+            }
+            component.id == ComponentId.BACKEND && observed && (
+                dockerServices.isRunning("postgres") == false || postgresHealth == PostgresHealth.UNHEALTHY || postgresHealth == PostgresHealth.STARTING
+            ) -> ComponentStatus.FAILED
             observed -> ComponentStatus.RUNNING
             else -> ComponentStatus.STOPPED
         },
-        details = if (dockerService != null && observed == null) component.details else null,
+        details = when {
+            dockerService != null && observed == null -> component.details
+            component.id == ComponentId.POSTGRES && observed == true -> when (postgresHealth) {
+                PostgresHealth.HEALTHY -> null
+                PostgresHealth.UNHEALTHY -> "PostgreSQL не проходит проверку готовности к подключениям"
+                PostgresHealth.STARTING -> "PostgreSQL готовится принимать подключения"
+                else -> "Не удалось проверить готовность PostgreSQL; повторим проверку автоматически"
+            }
+            component.id == ComponentId.BACKEND && observed == true && dockerServices.isRunning("postgres") == false -> "PostgreSQL остановлен — Backend не может работать с базой данных"
+            component.id == ComponentId.BACKEND && observed == true && postgresHealth in setOf(PostgresHealth.STARTING, PostgresHealth.UNHEALTHY) -> "PostgreSQL пока недоступен для подключений"
+            else -> null
+        },
     )
 }
 
+internal fun reconcileObservedCodexAuth(
+    current: CodexAuthState,
+    beforeInspection: CodexAuthState,
+    generationRunning: Boolean,
+    observed: CodexAuthState?,
+): CodexAuthState = when {
+    !generationRunning -> CodexAuthState(CodexAuthStatus.UNAVAILABLE, message = "Сначала запустите Generation Agent")
+    current != beforeInspection || current.busy -> current // A manual refresh/login owns its newer state.
+    observed != null -> observed
+    current.status == CodexAuthStatus.UNAVAILABLE -> CodexAuthState(
+        CodexAuthStatus.FAILED,
+        message = "Generation Agent запущен, но его статус авторизации пока недоступен. Повторим проверку автоматически.",
+    )
+    else -> current
+}
+
 internal fun reconciledLauncherStatus(components: List<LauncherComponentState>): LauncherStatus =
-    if (components.all { it.status == ComponentStatus.RUNNING }) LauncherStatus.RUNNING else LauncherStatus.STOPPED
+    when {
+        components.any { it.status == ComponentStatus.FAILED } -> LauncherStatus.FAILED
+        components.all { it.status == ComponentStatus.RUNNING } -> LauncherStatus.RUNNING
+        else -> LauncherStatus.STOPPED
+    }
 
 /**
  * Whether an observation that was started earlier may still be published.

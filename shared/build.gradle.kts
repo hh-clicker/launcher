@@ -9,6 +9,9 @@ kotlin {
 
 
     sourceSets {
+        jvmMain.dependencies {
+            implementation(libs.jna)
+        }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)

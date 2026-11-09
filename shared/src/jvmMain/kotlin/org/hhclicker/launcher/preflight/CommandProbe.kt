@@ -2,6 +2,7 @@ package org.hhclicker.launcher.preflight
 
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import org.hhclicker.launcher.runtime.WindowsJavaDllIsolation
 
 data class CommandProbeResult(
     val started: Boolean,
@@ -24,6 +25,7 @@ open class CommandProbe(
         val process = try {
             ProcessBuilder(arguments)
                 .redirectErrorStream(true)
+                .also { WindowsJavaDllIsolation.cleanChildEnvironment(it.environment()) }
                 .start()
         } catch (_: Exception) {
             return CommandProbeResult(started = false, exitCode = null, output = "")

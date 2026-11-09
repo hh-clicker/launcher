@@ -51,10 +51,20 @@ import org.hhclicker.launcher.runtime.SingleInstanceDecision
 import org.hhclicker.launcher.runtime.SingleInstanceGuard
 import org.hhclicker.launcher.runtime.SingleInstanceOutcome
 import org.hhclicker.launcher.runtime.WindowsJavaNetworkCompatibility
+import org.hhclicker.launcher.runtime.WindowsJavaDllIsolation
 import org.hhclicker.launcher.model.HostPlatform
 
 fun main() {
     WindowsJavaNetworkCompatibility.configure()
+    try {
+        WindowsJavaDllIsolation.configure()
+    } catch (_: Exception) {
+        showStartupFailure("Не удалось изолировать библиотеки Java для запуска дочерних процессов.")
+        return
+    } catch (_: LinkageError) {
+        showStartupFailure("Не удалось загрузить Windows-компонент изоляции библиотек Java.")
+        return
+    }
     // Skiko uses Metal (with its own fallback) on macOS. Forcing OpenGL there aborts window creation.
     if (HostPlatformDetector.detect() != HostPlatform.MACOS && System.getProperty("skiko.renderApi") == null) {
         System.setProperty("skiko.renderApi", "OPENGL")
@@ -73,7 +83,7 @@ fun main() {
     try {
         LauncherDataPaths.migrateLegacyLayout()
         application {
-            val windowState = rememberWindowState(width = 960.dp, height = 640.dp)
+            val windowState = rememberWindowState(width = 960.dp, height = 700.dp)
             val windowIcon = brandIconPainter()
             val launcherController = remember { PreflightLauncherController() }
             val desktopIntegration = remember { LinuxDesktopIntegration() }

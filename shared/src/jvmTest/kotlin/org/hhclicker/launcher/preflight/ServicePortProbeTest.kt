@@ -196,7 +196,8 @@ class ServicePortProbeTest {
         val inspection = probe.inspect(configuration())
 
         assertTrue(inspection.conflicts.isEmpty())
-        assertEquals(DockerServiceSnapshot.Observed(setOf("frontend")), inspection.services)
+        assertEquals(DockerServiceSnapshot.Observed(setOf("frontend"), setOf("postgres")), inspection.services)
+        assertEquals(null, inspection.services.isRunning("postgres"))
         assertTrue(inspection.dockerQuerySuccessful)
     }
 
@@ -248,7 +249,8 @@ class ServicePortProbeTest {
             dockerExecutable = { "docker" },
         ).inspect(configuration())
 
-        assertEquals(DockerServiceSnapshot.Observed(setOf("backend")), inspection.services)
+        assertEquals(DockerServiceSnapshot.Observed(setOf("backend"), setOf("postgres")), inspection.services)
+        assertEquals(null, inspection.services.isRunning("postgres"))
         assertEquals(false, inspection.services.isRunning("frontend"))
     }
 

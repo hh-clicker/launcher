@@ -112,7 +112,7 @@ class ChromeSetupPlannerTest {
             ChromePreparationResult(ChromePreparationOutcome.INSTALLED_AND_READY, exitCode = 0),
         )
         assertEquals(SetupStatus.SUCCEEDED, state.status)
-        assertEquals("Google Chrome установлен", state.message)
+        assertEquals("Google Chrome установлен. ${ChromeSetupPlanner.FIRST_RUN_HINT}", state.message)
         assertEquals(SetupTarget.CHROME, state.target)
     }
 
@@ -192,6 +192,7 @@ class ChromeSetupPlannerTest {
         assertEquals("Установить Google Chrome", ChromeSetupPlanner.INSTALL_TITLE)
         assertEquals("Принять и установить Chrome", ChromeSetupPlanner.INSTALL_BUTTON_LABEL)
         assertTrue(ChromeSetupPlanner.INSTALL_DESCRIPTION.contains("Browser Agent"))
+        assertTrue(ChromeSetupPlanner.INSTALL_DESCRIPTION.contains(ChromeSetupPlanner.FIRST_RUN_HINT))
         assertTrue(ChromeSetupPlanner.TERMS_URL.startsWith("https://"))
         // Docker's agreement is never reused as the Chrome consent.
         assertFalse(ChromeSetupPlanner.TERMS_NOTICE.contains("Docker"))

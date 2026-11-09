@@ -37,7 +37,10 @@ class LinuxDesktopIntegrationTest {
         assertTrue(integration.status()!!.installed)
         assertEquals("first version", Files.readString(application))
         assertTrue(Files.isExecutable(application))
-        assertContains(Files.readString(desktop), "Exec=\"${application}\"")
+        // This Linux desktop-entry contract is also exercised on Windows, where
+        // the temporary path contains backslashes that Exec must escape.
+        val escapedApplication = application.toString().replace("\\", "\\\\")
+        assertContains(Files.readString(desktop), "Exec=\"$escapedApplication\"")
         assertContains(Files.readString(desktop), "Icon=hh-clicker")
         assertTrue(Files.readAllBytes(icon).contentEquals(byteArrayOf(1, 2, 3)))
 

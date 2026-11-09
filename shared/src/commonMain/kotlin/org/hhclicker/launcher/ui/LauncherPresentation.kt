@@ -57,7 +57,8 @@ internal val LauncherState.supportingText: String
             LauncherStatus.STARTING -> "Подготавливаем и запускаем Backend, Frontend и PostgreSQL"
             LauncherStatus.RUNNING -> "Все компоненты доступны и готовы к работе"
             LauncherStatus.STOPPING -> "Корректно завершаем Docker Compose project"
-            LauncherStatus.FAILED -> error ?: "Один из компонентов не удалось запустить"
+            LauncherStatus.FAILED -> error ?: components.firstOrNull { it.status == ComponentStatus.FAILED }?.details
+                ?: "Один из компонентов не удалось запустить"
         }
     }
 

@@ -31,4 +31,16 @@ class ReleaseUpdateCheckerTest {
             { """{"tag_name":"v2.1.0"}""" }, { "bad policy" },
         ).check("2.0.0").urgency)
     }
+
+    @Test
+    fun release_support_floor_activates_only_after_the_fix_is_published() {
+        var published = "v2.1.0"
+        val checker = ReleaseUpdateChecker({ """{"tag_name":"$published"}""" },
+            { """{"minimumSupportedVersion":"3.0.0"}""" })
+        assertEquals(UpdateUrgency.NONE, checker.check("2.1.0").urgency)
+        assertEquals(UpdateUrgency.NORMAL, checker.check("2.0.0").urgency)
+        published = "v3.0.0"
+        assertEquals(UpdateUrgency.CRITICAL, checker.check("2.1.0").urgency)
+        assertEquals(UpdateUrgency.NONE, checker.check("3.0.0").urgency)
+    }
 }

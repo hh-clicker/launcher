@@ -110,9 +110,10 @@ object ChromeSetupPlanner {
 
     const val INSTALL_TITLE = "Установить Google Chrome"
 
+    const val FIRST_RUN_HINT = "После установки один раз откройте Chrome вручную и завершите первоначальную настройку."
+
     const val INSTALL_DESCRIPTION =
-        "Chrome нужен Browser Agent для работы с HH. Лаунчер скачает официальный установщик Google " +
-            "и установит браузер для всех пользователей."
+        "Лаунчер установит официальный Google Chrome для Browser Agent. " + FIRST_RUN_HINT
 
     /**
      * @param preparationInProgress true while any preparation operation is running. A second Chrome
@@ -184,11 +185,11 @@ object ChromeSetupPlanner {
     )
 
     fun stateFor(result: ChromePreparationResult): SetupState = when (result.outcome) {
-        ChromePreparationOutcome.INSTALLED_AND_READY -> succeeded("Google Chrome установлен")
+        ChromePreparationOutcome.INSTALLED_AND_READY -> succeeded("Google Chrome установлен. $FIRST_RUN_HINT")
 
         // The browser works immediately; the restart is Windows housekeeping, not a launcher restart.
         ChromePreparationOutcome.INSTALLED_RESTART_RECOMMENDED ->
-            succeeded("Google Chrome установлен. Windows просит перезагрузить компьютер позже")
+            succeeded("Google Chrome установлен. Windows просит перезагрузить компьютер позже. $FIRST_RUN_HINT")
 
         ChromePreparationOutcome.ALREADY_INSTALLED -> succeeded("Google Chrome уже установлен")
 

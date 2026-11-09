@@ -23,6 +23,7 @@ class SystemProcessLauncher : ProcessLauncher {
                 .directory(workingDirectory.toFile())
                 .redirectOutput(Redirect.DISCARD)
                 .redirectError(Redirect.DISCARD)
+                .also { WindowsJavaDllIsolation.cleanChildEnvironment(it.environment()) }
                 .start()
             true
         }.getOrDefault(false)

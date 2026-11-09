@@ -99,6 +99,7 @@ open class BrowserAgentProcess(
                     environment()["HH_CLICKER_GENERATION_URL"] = endpoints.generationUrl
                     environment()["HH_CLICKER_AGENT_ID"] = agentId
                     environment()["HH_CLICKER_AGENT_VERSION"] = BundleLayout.version(workspace) ?: "dev"
+                    WindowsJavaDllIsolation.cleanChildEnvironment(environment())
                 }
                 .start()
         } catch (exception: Exception) {

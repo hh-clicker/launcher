@@ -1,14 +1,18 @@
 # HH Clicker Launcher
 
 [![Release build](https://github.com/hh-clicker/.github/actions/workflows/release.yml/badge.svg)](https://github.com/hh-clicker/.github/actions/workflows/release.yml)
-![Windows](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)
+![Windows](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black) ![macOS](https://img.shields.io/badge/macOS-Intel%20%7C%20Apple%20Silicon-555555?logo=apple&logoColor=white)
 
-Состав выпуска определяется [каталогом релизов](releases/README.md). Windows installer и Linux AppImage публикуются через
+Состав выпуска определяется [каталогом релизов](releases/README.md). Windows installer, Linux AppImage и macOS DMG для Intel и Apple Silicon публикуются через
 [release workflow](https://github.com/hh-clicker/.github/actions/workflows/release.yml) в репозитории `.github`.
 
 Repository instructions for coding agents: [AGENTS.md](AGENTS.md).
 
 Linux AppImage, подготовка окружения и запуск без лаунчера: [инструкция для Linux](LINUX.md).
+Установка и обновление DMG: [инструкция для macOS](MACOS.md).
+
+После новой установки Google Chrome на любой платформе один раз откройте его вручную и завершите
+первоначальную настройку. Затем вернитесь в лаунчер и повторите проверку окружения.
 
 Windows desktop launcher for the local HH Clicker environment. The UI is implemented with Compose Multiplatform.
 The desktop controller performs real environment checks and controls the infra Docker Compose project.
@@ -120,14 +124,14 @@ It can build,
 start, verify and stop PostgreSQL, Backend and Frontend through `infra/compose.yaml`, followed by Generation Agent
  through its own Compose project and the host Browser Agent process. After Generation Agent starts, the settings
  screen reads its Codex status and provides device-code login, cancellation and logout without exposing credentials
- outside the persistent Docker volume. When all four components are running, the primary action opens the configured
+ outside the persistent Docker volume. When all five components are running, the primary action opens the configured
  Frontend URL and stopping remains available as a secondary action. The runtime contracts and the
  implementation map are documented in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 A newer Setup EXE performs a manual, application-only update. It rejects downgrade, displays the target release notes,
 stops the production runtime, backs up the installed application and replaces its directory without retaining obsolete
 files. Setup restores the previous application if replacement or structural validation fails. User data and Docker
-volumes are preserved. Automatic update discovery is intentionally absent.
+volumes are preserved. The version indicator checks for updates and opens the release page; installation remains manual.
 
 
 The reproducible icon generator is `tools/generate-icon.ps1`; it writes the tracked ICO resource.

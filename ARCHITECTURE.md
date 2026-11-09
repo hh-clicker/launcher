@@ -34,10 +34,35 @@ packaged services ahead of any checkout in the current directory; `HH_CLICKER_HO
 workspace and checks Docker CLI, Docker Compose, the Docker Engine, Node.js, Chrome, configuration files and Browser
 Agent artifacts without reading or printing secret values. Start/stop control the infra Compose project (PostgreSQL,
 Backend and Frontend), the Generation Agent Compose project and one launcher-owned Browser Agent host process.
+PostgreSQL has its own component row. Runtime monitoring reads its Docker healthcheck (`pg_isready`), scoped by
+the installation and Compose service labels, with a three-second query timeout. A running container alone does
+not establish database readiness. A stopped or unhealthy database explains the dependent Backend failure;
+an unanswered Docker query preserves the previous observation. The main window is fixed at 960×700;
+the five component rows share the available height without scrolling. Component error and authentication
+details occupy at most two lines to keep all five rows visible.
 On Linux, Compose overrides attach Backend and Generation Agent to a dedicated infra-managed network and make Backend call
 `http://generation-agent:17374`. The infra project starts first and stops last. The Generation Agent host port
 remains bound to `127.0.0.1` for local launcher access. Windows retains its `host.docker.internal` route.
 `FakeLauncherController` remains a UI/development implementation, not the pending runtime boundary.
+
+### Windows Java DLL isolation
+
+Before UI initialization or starting child processes, `WindowsJavaDllIsolation` replaces
+jpackage's inheritable `SetDllDirectory(runtime/bin)` with a process-local
+`AddDllDirectory` entry and `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)`.
+The launcher retains access to its Java native libraries, while Node, Chrome and browser
+native-messaging hosts do not inherit the Java DLL directory. This avoids external processes
+loading the bundled C++ runtime and keeping application files locked during an update.
+The process-local search policy uses the application directory, registered DLL directories
+and System32; it does not search arbitrary working directories or PATH for native libraries.
+Failure to establish the policy aborts startup before child processes are launched.
+
+The same bootstrap removes exact `java.home/bin` and `java.home/bin/server` entries from
+the native process PATH. ProcessBuilder launch boundaries also filter these entries from
+Java's cached environment, after applying any command-specific environment settings.
+Unrelated PATH entries and system/user environment settings remain unchanged. Linux and
+macOS do not load the Windows API mapping. Existing Chrome/proxy processes keep their
+already loaded libraries until they exit; installing the fix cannot release those locks.
 
 ### Windows Java networking compatibility
 
@@ -97,6 +122,8 @@ the installer finishing does not prove the Engine is ready. The runtime monitor 
 while the installed application's CLI or Compose is still unavailable, then continues observing the Engine.
 During this interval the setup card offers to open the existing application instead of reinstalling it;
 the user can finish Docker's initial setup while the launcher updates its checks automatically.
+The macOS Docker setup card disappears once those checks pass, even if the last explicit action was a successful open;
+an active preparation or a failed attempt remains visible.
 For Docker commands on macOS, `CommandRunner` prepends Docker.app's `Contents/Resources/bin` to the
 child process PATH so Docker can resolve its credential helper even in a GUI session started before
 Docker was installed. This does not modify the user's shell settings or Docker credential configuration.
@@ -330,6 +357,10 @@ Process- and Windows-specific code stays in `shared/src/jvmMain`:
 - `WindowsJavaNetworkCompatibility` selects the JDK TCP-loopback fallback before any HTTP client is initialized on
   Windows systems where the UNIX-domain selector connection may be unavailable.
 - `InfraEnvironment` and `GenerationEnvironment` own the two Compose lifecycles and HTTP readiness checks.
+- Runtime monitoring also reads the running generator's cached `GET /auth/status` with a three-second
+  request deadline. Restarting the container restores its authentication presentation automatically;
+  a running container alone does not prove authentication. These reads do not call the explicit CLI
+  refresh endpoint and cannot overwrite a concurrent manual refresh or login.
 - `GenerationAuthClient` reads the running agent's `/health` metadata for the model and Codex CLI
   version shown in launcher settings; authentication remains a separate request.
 - `BrowserAgentProcess` owns one host process and verifies its heartbeat through Backend.

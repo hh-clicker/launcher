@@ -66,7 +66,7 @@ class RuntimeReconciliationTest {
         val components = reconcileRuntimeComponents(
             current = state.components,
             endpoints = endpoints,
-            dockerServices = DockerServiceSnapshot.Observed(setOf("backend", "generation-agent")),
+            dockerServices = DockerServiceSnapshot.Observed(setOf("postgres", "backend", "generation-agent")),
             browserAgentRunning = true,
         )
         assertEquals(ComponentStatus.STOPPED, components.single { it.id == ComponentId.FRONTEND }.status)
@@ -84,7 +84,7 @@ class RuntimeReconciliationTest {
                 frontendUrl = "http://localhost:3000",
                 generationUrl = "http://localhost:17375",
             ),
-            dockerServices = DockerServiceSnapshot.Observed(setOf("backend", "frontend")),
+            dockerServices = DockerServiceSnapshot.Observed(setOf("postgres", "backend", "frontend")),
             browserAgentRunning = true,
         )
 
@@ -102,7 +102,7 @@ class RuntimeReconciliationTest {
         val components = reconcileRuntimeComponents(
             current = allRunning().components,
             endpoints = endpoints,
-            dockerServices = DockerServiceSnapshot.Observed(setOf("backend", "generation-agent")),
+            dockerServices = DockerServiceSnapshot.Observed(setOf("postgres", "backend", "generation-agent")),
             browserAgentRunning = true,
         )
 
@@ -127,7 +127,7 @@ class RuntimeReconciliationTest {
         val components = reconcileRuntimeComponents(
             current = stoppedFrontend.components,
             endpoints = endpoints,
-            dockerServices = DockerServiceSnapshot.Observed(setOf("backend", "frontend", "generation-agent")),
+            dockerServices = DockerServiceSnapshot.Observed(setOf("postgres", "backend", "frontend", "generation-agent")),
             browserAgentRunning = true,
         )
 

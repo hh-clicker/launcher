@@ -98,6 +98,6 @@ class LauncherPresentationTest {
 
         assertEquals("Сервисы работают", running.headline)
         assertEquals("Открыть HH Clicker", running.primaryActionLabel)
-        assertEquals("4 из 4 работают", running.summaryLabel)
+        assertEquals("5 из 5 работают", running.summaryLabel)
     }
 }

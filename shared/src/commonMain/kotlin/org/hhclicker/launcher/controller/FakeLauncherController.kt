@@ -196,6 +196,7 @@ class FakeLauncherController(
 
     private companion object {
         val launchOrder = listOf(
+            ComponentId.POSTGRES,
             ComponentId.BACKEND,
             ComponentId.FRONTEND,
             ComponentId.GENERATION_AGENT,

@@ -1,6 +1,7 @@
 package org.hhclicker.launcher.model
 
 enum class ComponentId {
+    POSTGRES,
     BACKEND,
     FRONTEND,
     GENERATION_AGENT,
@@ -100,6 +101,7 @@ data class LauncherState(
             status = LauncherStatus.STOPPED,
             workspacePath = workspacePath,
             components = listOf(
+                LauncherComponentState(ComponentId.POSTGRES, "PostgreSQL", "База данных", "Внутри Docker"),
                 LauncherComponentState(ComponentId.BACKEND, "Backend", "API и бизнес-логика", "http://localhost:8080"),
                 LauncherComponentState(ComponentId.FRONTEND, "Frontend", "Веб-интерфейс", "http://localhost"),
                 LauncherComponentState(ComponentId.GENERATION_AGENT, "Generation Agent", "Генерация сопроводительных", "http://localhost:17374"),

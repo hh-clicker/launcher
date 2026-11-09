@@ -40,6 +40,7 @@ open class CommandRunner {
                 .also { builder ->
                     builder.environment().putAll(environment)
                     configureMacDockerEnvironment(arguments.first(), builder.environment(), HostPlatformDetector.detect())
+                    WindowsJavaDllIsolation.cleanChildEnvironment(builder.environment())
                 }
                 .start()
         } catch (exception: Exception) {

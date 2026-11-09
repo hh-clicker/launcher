@@ -188,7 +188,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Deb)
             appResourcesRootDir.set(installerResourcesRoot)
-            modules("java.net.http")
+            modules("java.net.http", "java.logging")
             packageName = "HH Clicker Launcher"
             packageVersion = distributionVersion
             description = "Local launcher for HH Clicker"

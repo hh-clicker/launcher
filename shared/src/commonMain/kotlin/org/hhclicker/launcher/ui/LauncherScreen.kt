@@ -685,7 +685,7 @@ internal fun resolveMacSetupStage(state: LauncherState): SetupTarget? {
         "node" in failed -> SetupTarget.NODE
         failed.any { it in setOf("docker-cli", "docker-compose", "docker-server") } -> SetupTarget.DOCKER
         "chrome" in failed -> SetupTarget.CHROME
-        setup.status == SetupStatus.SUCCEEDED -> setup.target
+        setup.status == SetupStatus.SUCCEEDED && setup.target != SetupTarget.DOCKER -> setup.target
         else -> null
     }
 }
@@ -725,7 +725,7 @@ internal fun macSetupPresentation(
             failed || succeeded -> setup.message.orEmpty()
             installed -> "Docker Desktop установлен. Откройте его и завершите первоначальную настройку, если она запрошена. Лаунчер повторит проверку автоматически"
             docker -> "Лаунчер скачает и проверит официальный Docker Desktop для этого Mac. macOS запросит права администратора; условия Docker появятся в самом Docker Desktop"
-            else -> "Установите Google Chrome для Mac с официального сайта и повторите проверку"
+            else -> "Установите Google Chrome для Mac с официального сайта. ${ChromeSetupPlanner.FIRST_RUN_HINT} Затем повторите проверку"
         },
         buttonLabel = when {
             !docker -> "Инструкция"
@@ -764,7 +764,7 @@ internal fun linuxPackagePresentation(
             description = when {
                 engineOnly -> "Проверьте запуск службы Docker и доступ текущего пользователя к ней без sudo. Затем повторите проверку"
                 docker -> "Установите Docker Engine, CLI и Compose plugin по инструкции для своей системы. Запустите службу и настройте доступ без sudo"
-                else -> "Установите Google Chrome для своей системы. После установки повторите проверку окружения"
+                else -> "Установите Google Chrome для своей системы. ${ChromeSetupPlanner.FIRST_RUN_HINT} Затем повторите проверку окружения"
             },
             buttonLabel = "Инструкция",
             buttonEnabled = !state.busy,
@@ -792,7 +792,7 @@ internal fun linuxPackagePresentation(
             failed || finished || restart -> setup.message.orEmpty()
             engineOnly -> "Если Docker только что установлен, выйдите из сеанса Debian и войдите снова. Если ошибка останется, проверьте службу Docker и доступ пользователя к ней"
             docker -> "Лаунчер установит Docker Engine и Compose из репозитория Debian 13 и добавит текущего пользователя в группу docker. Потребуются права администратора и повторный вход в сеанс"
-            else -> "Лаунчер скачает официальный пакет Google Chrome и установит его через apt. Потребуются права администратора"
+            else -> "Лаунчер установит официальный Google Chrome; потребуются права администратора. ${ChromeSetupPlanner.FIRST_RUN_HINT}"
         },
         noticeText = ChromeSetupPlanner.TERMS_NOTICE.takeIf { !docker && !preparing },
         noticeUrl = ChromeSetupPlanner.TERMS_URL.takeIf { !docker && !preparing },
@@ -1401,13 +1401,21 @@ private fun ComponentItem(component: LauncherComponentState, modifier: Modifier 
                 Box(Modifier.size(7.dp).background(if (authWarning) LauncherColors.Primary else component.status.color, CircleShape))
                 Spacer(Modifier.width(8.dp))
                 Surface(color = Color(0xFFF1F3F6).copy(alpha = .86f), shape = RoundedCornerShape(7.dp)) {
-                    Text(if (authWarning) { if (auth.status == CodexAuthStatus.SIGNED_OUT) "Авторизация" else "Проверка" } else component.status.label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = LauncherColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                    Text(if (authWarning) { when (auth.status) {
+                        CodexAuthStatus.SIGNED_OUT -> "Авторизация"
+                        CodexAuthStatus.AUTHORIZING -> "Вход"
+                        CodexAuthStatus.CHECKING -> "Проверка"
+                        CodexAuthStatus.FAILED -> "Ошибка"
+                        CodexAuthStatus.UNAVAILABLE -> "Недоступен"
+                        CodexAuthStatus.SIGNED_IN -> component.status.label
+                    } } else component.status.label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = LauncherColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         if (component.status == ComponentStatus.RUNNING && auth != null) {
             val description = if (auth.status == CodexAuthStatus.SIGNED_IN) auth.limitsSummary?.let { summary -> summary + (auth.checkedAtLabel?.let { " · проверено $it" } ?: "") } else auth.message
-            description?.let { Text(it, modifier = Modifier.padding(start = 50.dp), color = LauncherColors.Muted, style = MaterialTheme.typography.bodySmall) }
+            description?.let { Text(it, modifier = Modifier.padding(start = 50.dp), color = LauncherColors.Muted,
+                style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
         if (failure != null) {
             Spacer(Modifier.height(6.dp))
@@ -1451,6 +1459,7 @@ private fun TablerIcon(resource: DrawableResource, tint: Color, size: Dp) {
 
 private val ComponentId.iconResource: DrawableResource
     get() = when (this) {
+        ComponentId.POSTGRES -> Res.drawable.icon_server
         ComponentId.BACKEND -> Res.drawable.icon_server
         ComponentId.FRONTEND -> Res.drawable.icon_browser
         ComponentId.GENERATION_AGENT -> Res.drawable.icon_sparkles
