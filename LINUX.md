@@ -96,7 +96,7 @@ bash ./gradlew :desktopApp:run --no-daemon --console=plain
 
 ```bash
 cd launcher
-bash ./gradlew :desktopApp:packageLinuxAppImage -Pnightly -PnightlyVersion=2.0.1 --no-daemon --console=plain
+bash ./gradlew :desktopApp:packageLinuxAppImage -Pnightly --no-daemon --console=plain
 ```
 
 Результат появляется в `desktopApp/build/compose/binaries/main/appimage`. Числовую версию nightly подставьте подходящую к текущему каталогу релиза.

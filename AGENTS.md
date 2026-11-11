@@ -2,11 +2,11 @@
 
 ## Назначение и границы
 
-Windows launcher на Compose Multiplatform: подготовка окружения, управление runtime и installer.
+Кроссплатформенный launcher на Compose Multiplatform: подготовка окружения, управление runtime и установочные пакеты.
 
 ## Карта кода
 
-- `shared/src/commonMain` — модели, UI, интерфейсы; `shared/src/jvmMain` — процессы и Windows.
+- `shared/src/commonMain` — модели, UI, интерфейсы; `shared/src/jvmMain` — процессы и интеграции Windows/Linux/macOS.
 - `desktopApp` — entry point и Gradle; `installer` — payload, установка и обновление.
 - `releases/<version>` — каталог совместимости, pinned SHA и release notes.
 - `tools` — воспроизводимая генерация иконки; автоматизация выпуска находится в репозитории .github.

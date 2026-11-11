@@ -26,20 +26,30 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## Inter
+
+The launcher bundles Inter 4.1 Regular, SemiBold and Bold under the SIL Open Font License 1.1.
+The license is shipped in Compose resources and is available in the repository at
+[inter_ofl.txt](shared/src/commonMain/composeResources/files/licenses/inter_ofl.txt).
+
 ## Node.js runtime
 
 When no compatible system Node.js is available, the launcher downloads an unmodified official Node.js
-runtime for Windows x64 from `https://nodejs.org/dist/` and verifies it against the `SHASUMS256.txt`
-of the same pinned release. It stores only its private portable runtime under the current user's
-LOCALAPPDATA; nothing is installed system-wide and PATH is not modified.
+runtime matching Windows x64, Linux x86_64 or macOS Intel/Apple Silicon from `https://nodejs.org/dist/`
+and verifies it against the `SHASUMS256.txt` of the same pinned release. The private portable runtime
+is stored under the platform's per-user HH Clicker data directory; nothing is installed system-wide
+and PATH is not modified.
 
 Node.js is distributed under the MIT license. The launcher preserves its `LICENSE` beside the local
-portable `node.exe`; dependency notices remain published in the verified official distribution.
+portable Node executable; dependency notices remain published in the verified official distribution.
 
 ## Google Chrome
 
 Google Chrome is **not** redistributed with this project. When Chrome is missing, and only after the
 user presses the button that states Google's terms are accepted, the launcher downloads the official
-Google Chrome for Business x64 MSI from `https://dl.google.com/`, verifies its Authenticode signature
-against Google LLC and hands it to `msiexec`. The browser remains subject to the
+package from `https://dl.google.com/`. On Windows this is the Chrome for Business x64 MSI, verified
+against Google LLC and handed to `msiexec`. Debian 13 uses the official amd64 DEB, checked for package
+identity and architecture before installation with apt. macOS uses Google's universal PKG, checked
+with the macOS signature tools before the system installer is invoked. Other Linux distributions
+receive manual installation instructions. The browser remains subject to the
 [Google Chrome and ChromeOS Additional Terms of Service](https://www.google.com/chrome/terms/).

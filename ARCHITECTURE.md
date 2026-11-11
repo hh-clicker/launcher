@@ -4,7 +4,7 @@
 
 The UI consumes `LauncherState` and sends intents through `LauncherController`. The interface covers full and runtime
 refreshes, port reassignment, preparation of WSL/Docker/Node/Chrome, Codex login/logout and start/stop of the complete
-environment. The UI does not know whether a component is a Docker service, HTTP endpoint or Windows process.
+environment. The UI does not know whether a component is a Docker service, HTTP endpoint or host process.
 
 `LauncherTheme` uses bundled Inter 4.1 Regular, SemiBold and Bold for the Compose UI so font metrics do not depend on
 the host operating system's default sans-serif family. The font files live in `shared` Compose resources; the bundled
@@ -16,9 +16,12 @@ Engine, Node.js, Google Chrome, the workspace and local configuration without ru
 kept under `$XDG_DATA_HOME/hh-clicker/data` or `~/.local/share/hh-clicker/data`. Debian 13 x86_64 has its own explicit
 setup actions: Docker Engine and Compose from the Debian packages, a pinned per-user Node.js archive checked against
 the official SHA-256 list, and the official Google Chrome Debian package. Docker and Chrome request administrator
-rights through `pkexec`; Docker group membership takes effect in a new login session. Other Linux distributions do
-not get an automatic package action. macOS is identified separately but remains blocked until its
-runtime and packaging have been implemented.
+rights through `pkexec`; Docker group membership takes effect in a new login session. Other Linux distributions
+receive Docker/Chrome installation instructions instead of automatic package actions; portable Node.js remains available.
+macOS 14+ supports Intel and Apple Silicon DMGs with a bundled JVM. It locates Docker Desktop independently of PATH,
+installs the matching Docker Desktop and the official universal Chrome PKG on explicit request, and prepares a
+verified portable Node.js runtime. Data lives under `~/Library/Application Support/HH Clicker/data`.
+WSL, Debian package probes and Windows installer commands are not used on macOS.
 Port availability means that no process is listening, not that a GUI user can bind the port immediately. Linux reads
 listening sockets for all configured ports from `/proc/net/tcp` and `/proc/net/tcp6`; this also works for privileged
 ports such as 80. On Windows, a failed test bind is checked against `netstat` listeners before reporting a conflict,
@@ -266,6 +269,10 @@ Docker Desktop. Each is reported with a precise instruction instead of being att
 
 ## Launcher-managed portable Node.js runtime
 
+Windows uses `WindowsNodePreparer` and a ZIP; Linux and macOS use `UnixNodePreparer` with an archive
+matching the host OS/architecture. All variants use the pinned official version and SHA-256 list,
+prefer an already compatible system Node.js and keep their portable runtime outside application files.
+
 `NodeRuntimeLocator` first probes the system `node` from `PATH` and accepts it only when it satisfies the Browser
 Agent engine range. Otherwise the setup flow downloads the pinned official Windows x64 Node.js ZIP, verifies it
 against the matching official `SHASUMS256.txt`, and extracts only `node.exe` under the current user's
@@ -331,7 +338,7 @@ Values that differ from those previous defaults are retained. Development settin
 
 Backend and Frontend are not independent processes from the launcher's point of view: both belong to one Compose
 project and Backend also depends on PostgreSQL. Generation Agent is a second independent Compose project. Browser
-Agent must remain on the Windows host because it launches visible system Chrome and owns local browser profiles.
+Agent remains on the desktop host on every supported platform because it launches visible system Chrome and owns local browser profiles.
 
 ## Required launch order
 
@@ -348,10 +355,13 @@ generation data live in persistent volumes.
 
 ## JVM implementation map
 
-Process- and Windows-specific code stays in `shared/src/jvmMain`:
+Process execution and platform integrations stay in `shared/src/jvmMain`:
 
 - `CommandRunner` starts bounded child processes from argument lists.
 - `EnvironmentPreflight` and the probes collect read-only machine diagnostics.
+- `HostPlatformDetector` selects platform prerequisites and paths. `UnixNodePreparer` handles Linux/macOS portable
+  Node archives; `LinuxPackagePreparer` owns Debian package actions. `MacDockerPreparer` and `MacChromePreparer`
+  own explicit macOS installation actions, while `ExternalBrowserOpener` opens user-requested URLs per platform.
 - `LauncherRuntimeConfigurationStore` creates profile-local environment files, instance ID, database password and
   stable ports under the data directory.
 - `WindowsJavaNetworkCompatibility` selects the JDK TCP-loopback fallback before any HTTP client is initialized on

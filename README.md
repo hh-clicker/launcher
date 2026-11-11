@@ -14,7 +14,8 @@ Linux AppImage, подготовка окружения и запуск без �
 После новой установки Google Chrome на любой платформе один раз откройте его вручную и завершите
 первоначальную настройку. Затем вернитесь в лаунчер и повторите проверку окружения.
 
-Windows desktop launcher for the local HH Clicker environment. The UI is implemented with Compose Multiplatform.
+Desktop launcher for the local HH Clicker environment on Windows x64, Linux x86_64 and macOS 14+ (Intel/Apple Silicon).
+The UI is implemented with Compose Multiplatform.
 The desktop controller performs real environment checks and controls the infra Docker Compose project.
 
 ## Development
@@ -23,6 +24,8 @@ The desktop controller performs real environment checks and controls the infra D
 - Standard run: `gradlew.bat :desktopApp:run`
 - Portable application image: `gradlew.bat :desktopApp:createDistributable`
 - Per-user Windows installer: `gradlew.bat :desktopApp:packageWindowsInstaller`
+- Linux AppImage (on Linux): `bash ./gradlew :desktopApp:packageLinuxAppImage -Pnightly`
+- macOS DMG (on the target Mac architecture): `bash ./gradlew :desktopApp:packageDmg -Pnightly`
 
 ### Linux
 
@@ -43,7 +46,7 @@ Nightly packaging uses the current working trees (tracked and non-ignored untrac
 repository's HEAD and dirty flag, and never edits the official release catalog. The numeric version defaults
 to the next patch after `hhClickerVersion`; `-PnightlyVersion=X.Y.Z` can select a version equal to or newer than the base.
 Choose `-PnightlyVersion` equal to the target stable version when both must install at the same numeric version.
-In PowerShell use `gradlew.bat --% :desktopApp:packageWindowsInstaller -Pnightly -PnightlyVersion=2.0.0`.
+In PowerShell use `gradlew.bat --% :desktopApp:packageWindowsInstaller -Pnightly`.
 The launcher and Setup label the build as nightly, and the output is `HH-Clicker-Setup-<version>-nightly.exe`.
 Do not edit the repositories during staging. Nightly uses the same production installation and data,
 not an isolated profile; ordinary downgrade protection still applies. Repeated nightlies with the same numeric
@@ -52,8 +55,11 @@ database migrations against valuable data; this does not add database rollback.
 
 ## Current boundary
 
-The launcher checks hardware virtualization, WSL 2, Docker Desktop, Docker CLI/Compose/Engine, the workspace,
-Node.js, Chrome and required local files.
+The launcher checks Docker CLI/Compose/Engine, the workspace, Node.js, Chrome and required local files.
+Windows additionally requires hardware virtualization, WSL 2 and Docker Desktop. Linux uses Docker Engine;
+macOS uses Docker Desktop. Platform-specific setup is described in [LINUX.md](LINUX.md) and [MACOS.md](MACOS.md).
+
+### Windows machine preparation
 
 The "Подготовка компьютера" screen offers one next action at a time. For WSL 2 it can install the package without a
 Linux distribution, update an outdated one or select WSL 2 as the default version through a standard Windows UAC
@@ -65,7 +71,7 @@ signature against Docker Inc. before running it, and installs a missing Docker D
 `install --quiet --user --accept-license --backend=wsl-2 --no-windows-containers`. Before the first detached start it also
 sets Docker's `DisplayedOnboarding` and `OpenUIOnStartupDisabled` user preferences, so neither the optional
 welcome/sign-in survey nor the Dashboard opens during the background start.
-Only x64 hosts, Linux containers and the
+On Windows, only x64 hosts, Linux containers and the
 WSL 2 backend are supported; Hyper-V, Docker VMM, Windows containers, Kubernetes and a Docker Hub login are never
 enabled. An update supplies neither backend nor container-mode flags and preserves the detected installation scope.
 The `--accept-license`
@@ -94,8 +100,11 @@ pinned official Windows x64 ZIP, verifies its SHA-256 against that release's off
 only `node.exe` under `%LOCALAPPDATA%\HH Clicker\data\runtime`. It requires no UAC, installs nothing system-wide and never
 changes `PATH`.
 
+### Shared runtime
+
 Runtime configuration is independent of replaceable application files. On first launch the application creates a stable
-UUID, PostgreSQL password and environment files under `%LOCALAPPDATA%\HH Clicker\data\config`. Packaged installations use the
+UUID, PostgreSQL password and environment files under the per-user data directory (`%LOCALAPPDATA%\HH Clicker\data\config`
+on Windows; see the Linux/macOS guides for their paths). Packaged installations use the
 `production` profile and Compose projects `hh-clicker` / `hh-clicker-generation`; a repository checkout uses the
 isolated `development` profile and `hh-clicker-dev` / `hh-clicker-generation-dev`. Existing workspace `.env` values
 are imported only when a profile is created, and later application updates never rotate its stored database password.
@@ -114,7 +123,7 @@ While the launcher is open, a lightweight four-second poll reconciles its own la
 Browser Agent process without rerunning machine diagnostics. It notices externally stopped or restarted containers,
 but does not adopt containers from another profile and does not treat mere container presence as an HTTP health check.
 
-After Docker is ready, a missing Google Chrome becomes the next preparation action. The launcher never updates,
+On Windows, after Docker is ready, a missing Google Chrome becomes the next preparation action. The launcher never updates,
 repairs, starts or closes an existing Chrome. With an explicit click accepting the linked Google terms, it downloads
 the fixed official x64 Enterprise MSI over HTTPS, verifies an Authenticode signer of Google LLC and invokes Windows'
 own absolute `msiexec.exe` path through a standard Windows UAC request, with `/qn /norestart`. A successful MSI code is accepted only when the same locator

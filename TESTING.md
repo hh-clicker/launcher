@@ -25,10 +25,33 @@ FakeLauncherController используется в тестах и по умол
 Compose App() без контроллера. У desktop entry point нет CLI-флага fake/mock;
 для ручного UI-preview нужно явно использовать fake-контроллер в preview-коде.
 
+### Индикатор обновления
+
+Для проверки боковой панели можно задать `HH_CLICKER_UPDATE_PREVIEW` только процессу лаунчера:
+`critical:3.0.0`, `normal:3.0.1` или `none`. Подменяется только состояние индикатора;
+версия установленного приложения, конфигурация и ограничения установщика не меняются.
+Без переменной проверка использует опубликованные релизы GitHub. Текущий лаунчер нужно закрыть,
+иначе single-instance guard активирует уже запущенное окно без тестового состояния.
+
+После установки новой nightly закройте лаунчер и выполните в PowerShell:
+
+```powershell
+$env:HH_CLICKER_UPDATE_PREVIEW = 'critical:3.0.0'
+try {
+    Start-Process -FilePath "$env:LOCALAPPDATA\HH Clicker\application\HH Clicker Launcher.exe"
+} finally {
+    Remove-Item Env:HH_CLICKER_UPDATE_PREVIEW
+}
+```
+
+Для проверки обычного обновления используйте `normal:3.0.1`, без обновления — `none`.
+Переменная удаляется из текущей оболочки сразу после запуска; дочерний процесс получает свою копию.
+Прочие функции лаунчера в этом режиме остаются настоящими.
+
 ## Nightly installer
 
 ```powershell
-.\gradlew.bat --% :desktopApp:packageWindowsInstaller -Pnightly -PnightlyVersion=2.0.0 --console=plain
+.\gradlew.bat --% :desktopApp:packageWindowsInstaller -Pnightly --console=plain
 ```
 
 Выберите допустимую числовую версию. Nightly допускает изменённые и неотслеживаемые
@@ -57,7 +80,7 @@ DLL из каталога `HH Clicker\application\runtime`. Проверьте �
 Сборка из полного Git checkout с JDK 21+, Node.js и npm:
 
 ```bash
-bash ./gradlew :desktopApp:packageDmg -Pnightly -PnightlyVersion=2.1.1 --console=plain
+bash ./gradlew :desktopApp:packageDmg -Pnightly --console=plain
 ```
 
 JDK и Gradle должны иметь архитектуру целевого пакета: Intel x64 или Apple Silicon arm64.
