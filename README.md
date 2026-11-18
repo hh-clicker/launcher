@@ -9,7 +9,8 @@
 Repository instructions for coding agents: [AGENTS.md](AGENTS.md).
 
 Экспериментальный Windows portable на Rust развивается в отдельном репозитории
-[launcher-rust](https://github.com/hh-clicker/launcher-rust#readme) и собирается отдельным ручным workflow.
+[launcher-rust](https://github.com/hh-clicker/launcher-rust#readme). Начиная с 3.1.0 он включён
+в основной release workflow; отдельный ручной workflow остаётся для пробных сборок.
 У него собственные данные рядом с EXE; автоматического переноса данных этой установки нет.
 
 Linux AppImage, подготовка окружения и запуск без лаунчера: [инструкция для Linux](LINUX.md).

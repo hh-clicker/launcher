@@ -20,8 +20,8 @@ SHA должны указывать на окончательные коммит
 
 ## Обновление
 
-Текущий выпуск 3.0.0 поддерживает обновление с 2.0.0 на PostgreSQL 17, `configVersion=1`.
-В 3.0.0 нет новых миграций БД (`databaseMigration=false`). Windows EXE заменяет приложение через установщик;
+Подготавливаемый выпуск 3.1.0 поддерживает обновление с 2.0.0 на PostgreSQL 17, `configVersion=1`.
+В 3.1.0 нет новых миграций БД (`databaseMigration=false`). Windows EXE заменяет приложение через установщик;
 на Linux заменяется AppImage, на macOS — приложение в Applications. Пользовательские данные и Docker volumes
 хранятся отдельно. Подробности находятся в [общем руководстве](https://github.com/hh-clicker/.github/blob/master/profile/README.md#updates).
 
@@ -34,7 +34,9 @@ configVersion равен 1. Миграция 036 добавляет состоя
 
 ## Автоматизация
 
-Windows installer, Linux AppImage и macOS DMG для Intel и Apple Silicon собираются в репозитории `.github` при push тега той же версии. Workflow
+Windows installer, Rust portable EXE, Linux AppImage и macOS DMG для Intel и Apple Silicon собираются в репозитории `.github` при push тега той же версии. Workflow
 получает launcher по тегу, сервисы — по SHA этого манифеста, публикует артефакты в draft.
+Rust launcher получает тот же тег; его версия и пять SHA в `release-inputs.json`
+должны совпадать с Kotlin-манифестом.
 Порядок проверки, подписания и публикации описан в
 [регламенте выпуска](https://github.com/hh-clicker/.github/blob/master/RELEASING.md).
