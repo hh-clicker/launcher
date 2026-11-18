@@ -127,6 +127,10 @@ During this interval the setup card offers to open the existing application inst
 the user can finish Docker's initial setup while the launcher updates its checks automatically.
 The macOS Docker setup card disappears once those checks pass, even if the last explicit action was a successful open;
 an active preparation or a failed attempt remains visible.
+For Docker commands on Windows, `CommandRunner` prepends the directory of the resolved absolute
+`docker.exe` to the child process PATH. Docker can then find its sibling credential helper immediately
+after installation without restarting the launcher. Existing PATH entries are preserved; the Docker
+directory is deduplicated case-insensitively. Other commands keep their inherited environment.
 For Docker commands on macOS, `CommandRunner` prepends Docker.app's `Contents/Resources/bin` to the
 child process PATH so Docker can resolve its credential helper even in a GUI session started before
 Docker was installed. This does not modify the user's shell settings or Docker credential configuration.

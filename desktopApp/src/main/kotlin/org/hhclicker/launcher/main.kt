@@ -53,6 +53,8 @@ import org.hhclicker.launcher.runtime.SingleInstanceOutcome
 import org.hhclicker.launcher.runtime.WindowsJavaNetworkCompatibility
 import org.hhclicker.launcher.runtime.WindowsJavaDllIsolation
 import org.hhclicker.launcher.model.HostPlatform
+import org.hhclicker.launcher.model.ReleaseUpdateState
+import org.hhclicker.launcher.model.UpdateUrgency
 
 fun main() {
     WindowsJavaNetworkCompatibility.configure()
@@ -88,6 +90,7 @@ fun main() {
             val launcherController = remember { PreflightLauncherController() }
             val desktopIntegration = remember { LinuxDesktopIntegration() }
             val releaseUpdateChecker = remember { ReleaseUpdateChecker() }
+            val releaseUpdatePreview = remember { updatePreviewFromEnvironment() }
             var desktopIntegrationState by remember { mutableStateOf(desktopIntegration.status()) }
             val applicationScope = rememberCoroutineScope()
             var closing by remember { mutableStateOf(false) }
@@ -149,7 +152,7 @@ fun main() {
                                     }
                                 },
                                 onCheckForUpdates = { version ->
-                                    withContext(Dispatchers.IO) { releaseUpdateChecker.check(version) }
+                                    releaseUpdatePreview ?: withContext(Dispatchers.IO) { releaseUpdateChecker.check(version) }
                                 },
                             )
                         }
@@ -160,6 +163,15 @@ fun main() {
     } finally {
         singleInstance.close()
     }
+}
+
+/** Explicit UI preview only; the installed version and installer downgrade checks stay unchanged. */
+private fun updatePreviewFromEnvironment(): ReleaseUpdateState? {
+    val value = System.getenv("HH_CLICKER_UPDATE_PREVIEW") ?: return null
+    if (value == "none") return ReleaseUpdateState()
+    val match = Regex("(normal|critical):([0-9]+\\.[0-9]+\\.[0-9]+)").matchEntire(value) ?: return null
+    return ReleaseUpdateState(match.groupValues[2],
+        if (match.groupValues[1] == "critical") UpdateUrgency.CRITICAL else UpdateUrgency.NORMAL)
 }
 
 /**

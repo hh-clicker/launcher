@@ -1,0 +1,12 @@
+{
+  "legalFilePattern": "^(?:unlicense|licen[cs]es?|copying|copyright|notices?|patents?|authors|third[-_ ]?party(?:[-_ ]?(?:licen[cs]es?|notices?))?)(?:$|[._ -])",
+  "legalDirectoryPattern": "^(?:licen[cs]es?|legal|notices?)$",
+  "launcherFiles": [
+    { "source": "LICENSE", "target": "LICENSE" },
+    { "source": "THIRD_PARTY_NOTICES.md", "target": "THIRD_PARTY_NOTICES.md" },
+    { "source": "shared/src/commonMain/composeResources/files/licenses/inter_ofl.txt", "target": "licenses/launcher/inter_ofl.txt" },
+    { "source": "licenses/skiko-0.144.6/NOTICE", "target": "licenses/skiko-0.144.6/NOTICE" },
+    { "source": "licenses/jna-5.18.1/libffi-LICENSE", "target": "licenses/jna-5.18.1/libffi-LICENSE" },
+    { "source": "licenses/skia-m144-22f58c9fd4/LICENSE", "target": "licenses/skia-m144-22f58c9fd4/LICENSE" }
+  ]
+}

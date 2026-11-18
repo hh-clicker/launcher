@@ -8,7 +8,15 @@ The staging step copies tracked files from `backend`, `browser-agent`, `frontend
 Every release has a definition and Russian release notes under `releases/<version>/`; the definition pins the exact
 commit of each service repository. Staging refuses a mismatched or dirty checkout. Browser Agent dependencies are
 installed afresh in staging; after compilation only production dependencies and runtime JavaScript remain. Markdown
-documentation (`*.md`, case-insensitive) is removed from the final payload, including files contributed by npm packages.
+documentation (`*.md`, case-insensitive) is removed from the final payload, including files contributed by npm packages,
+except legal files such as `LICENSE.md`, `NOTICE.md`, `COPYING.md` and `THIRD_PARTY_NOTICES.md`.
+Both packaging paths use `license-policy.json`; the exception applies during source copying and final cleanup.
+The launcher's own `LICENSE`, `THIRD_PARTY_NOTICES.md` (including Tabler attribution) and Inter OFL are explicitly
+included in the common application resources for Windows, Linux and macOS. Missing launcher notices fail staging.
+The required list also includes the versioned Skiko 0.144.6 NOTICE and libffi LICENSE from JNA 5.18.1
+under `licenses/`. These files supplement upstream JAR notices without changing those JARs.
+The Skia `m144-22f58c9fd4` BSD license is included there as a separate required file.
+This policy preserves supplied notices; it does not replace an audit of third-party dependencies or generated bundles.
 Root `tools/` directories contain developer utilities and are omitted from staged service runtime.
 
 Compose creates the application image; Inno Setup 6 owns the Windows installation, upgrade and uninstall flow.

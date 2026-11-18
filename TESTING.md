@@ -2,6 +2,16 @@
 
 ## Автономные тесты
 
+Правила сохранения лицензионных файлов и включение уведомлений лаунчера проверяются отдельно,
+без npm install, Gradle и подготовки настоящего payload:
+
+```powershell
+node --test installer/tests/license-policy.test.mjs
+```
+
+На Windows этот набор также проверяет реализацию для встроенного Windows PowerShell 5.1.
+На Linux/macOS проверка PowerShell пропускается; общая политика и Unix-копирование проверяются.
+
 ```powershell
 .\gradlew.bat :shared:jvmTest --console=plain
 ```

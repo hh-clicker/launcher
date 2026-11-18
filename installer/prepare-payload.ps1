@@ -23,6 +23,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = [Console]::OutputEncoding
+. (Join-Path $PSScriptRoot 'license-policy.ps1')
 
 $workspace = [System.IO.Path]::GetFullPath($WorkspaceRoot)
 $launcher = Join-Path $workspace 'launcher'
@@ -130,7 +131,7 @@ foreach ($name in $repositories) {
         if ([string]::IsNullOrWhiteSpace($relative)) { continue }
         # Root tools are developer utilities, not installed service runtime.
         if ($relative.Replace('\', '/').StartsWith('tools/', [System.StringComparison]::OrdinalIgnoreCase)) { continue }
-        if ([System.IO.Path]::GetExtension($relative).Equals('.md', [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (Test-ExcludedMarkdown -Path $relative) {
             continue
         }
         $nativeRelative = $relative.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
@@ -169,10 +170,12 @@ Get-ChildItem -LiteralPath (Join-Path $browserAgent 'dist') -File -Recurse |
     Remove-Item -Force
 
 # npm packages bring their own README and changelog files after the Git-filtered copy is complete.
-# Apply the Markdown exclusion to the final payload as well, including production node_modules.
+# Keep license/notice Markdown in production dependencies as well as service sources.
 Get-ChildItem -LiteralPath $destinationPath -File -Recurse |
-    Where-Object { $_.Extension.Equals('.md', [System.StringComparison]::OrdinalIgnoreCase) } |
+    Where-Object { Test-ExcludedMarkdown -Path $_.FullName.Substring($destinationPath.TrimEnd('\', '/').Length + 1) } |
     Remove-Item -Force
+
+Copy-LauncherLicenses -Launcher $launcher -Destination $destinationPath
 
 $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllLines(

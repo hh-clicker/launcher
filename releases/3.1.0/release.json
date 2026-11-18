@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "version": "3.1.0",
+  "minimumUpgradeVersion": "2.0.0",
+  "configVersion": 1,
+  "databaseMigration": false,
+  "postgresMajor": 17,
+  "repositories": {
+    "backend": {
+      "commit": "04b30b51e6e70eca4baaf531810870619cba1079"
+    },
+    "browser-agent": {
+      "commit": "9eab33bbed72d83e0443f7383e7c4b13ba1fcc51"
+    },
+    "frontend": {
+      "commit": "4acc70390c192a1436ae5bef0d72f6c7190d5ed2"
+    },
+    "generation-agent": {
+      "commit": "108784b49ef2ff7009dcbd5f34088afa6c53791b"
+    },
+    "infra": {
+      "commit": "cd8642cbdd337755c31e4a538097e19de882c196"
+    }
+  }
+}

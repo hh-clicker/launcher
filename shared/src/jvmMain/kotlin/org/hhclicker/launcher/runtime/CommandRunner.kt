@@ -40,6 +40,7 @@ open class CommandRunner {
                 .also { builder ->
                     builder.environment().putAll(environment)
                     configureMacDockerEnvironment(arguments.first(), builder.environment(), HostPlatformDetector.detect())
+                    configureWindowsDockerEnvironment(arguments.first(), builder.environment(), HostPlatformDetector.detect())
                     WindowsJavaDllIsolation.cleanChildEnvironment(builder.environment())
                 }
                 .start()
@@ -78,6 +79,20 @@ open class CommandRunner {
     private companion object {
         const val MAX_OUTPUT_CHARACTERS = 8_000
     }
+}
+
+/** A freshly installed Docker CLI still needs its sibling credential helper on the child's PATH. */
+internal fun configureWindowsDockerEnvironment(command: String, environment: MutableMap<String, String>, platform: HostPlatform) {
+    if (platform != HostPlatform.WINDOWS) return
+    val normalized = command.replace('\\', '/')
+    if (!normalized.substringAfterLast('/').equals("docker.exe", ignoreCase = true)) return
+    if (!Regex("^[A-Za-z]:/.*").matches(normalized) && !normalized.startsWith("//")) return
+    val directory = command.substring(0, normalized.lastIndexOf('/'))
+    val pathKey = environment.keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "PATH"
+    fun identity(value: String) = value.trim().trim('"').replace('\\', '/').trimEnd('/').lowercase()
+    val existing = environment[pathKey].orEmpty().split(';')
+        .filter { it.isNotBlank() && identity(it) != identity(directory) }
+    environment[pathKey] = (listOf(directory) + existing).joinToString(";")
 }
 
 /** Docker resolves credential helpers through its child's PATH, even when the CLI path is absolute. */

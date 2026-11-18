@@ -8,6 +8,10 @@
 
 Repository instructions for coding agents: [AGENTS.md](AGENTS.md).
 
+Экспериментальный Windows portable на Rust развивается в отдельном репозитории
+[launcher-rust](https://github.com/hh-clicker/launcher-rust#readme) и собирается отдельным ручным workflow.
+У него собственные данные рядом с EXE; автоматического переноса данных этой установки нет.
+
 Linux AppImage, подготовка окружения и запуск без лаунчера: [инструкция для Linux](LINUX.md).
 Установка и обновление DMG: [инструкция для macOS](MACOS.md).
 
@@ -147,3 +151,8 @@ The reproducible icon generator is `tools/generate-icon.ps1`; it writes the trac
 Test modes, isolated development configuration and production nightly behavior are described in
 [TESTING.md](TESTING.md). Release publication is documented in the
 [release runbook](https://github.com/hh-clicker/.github/blob/master/RELEASING.md).
+
+## License
+
+HH Clicker original code and documentation are licensed under the [MIT License](LICENSE).
+Third-party components retain their own licenses and notices.

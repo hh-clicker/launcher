@@ -1,6 +1,7 @@
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, extname, join, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { excludeMarkdown, stageLauncherLicenses } from './license-policy.mjs'
 
 // Linux/macOS distribution staging. Windows keeps its existing PowerShell staging path.
 const [workspaceArgument, destinationArgument, version, releaseArgument, notesArgument, channel] = process.argv.slice(2)
@@ -61,7 +62,7 @@ for (const name of repositories) {
     : Buffer.alloc(0)
   const files = new Set(Buffer.concat([tracked, untracked]).toString('utf8').split('\0').filter(Boolean))
   for (const nameInRepository of files) {
-    if (nameInRepository.startsWith('tools/') || extname(nameInRepository).toLowerCase() === '.md') continue
+    if (nameInRepository.startsWith('tools/') || excludeMarkdown(nameInRepository)) continue
     const source = resolve(repository, nameInRepository)
     const target = resolve(destination, name, nameInRepository)
     if (!source.startsWith(repository + sep) || !target.startsWith(join(destination, name) + sep)) {
@@ -91,7 +92,8 @@ const removeMatching = (directory, predicate) => {
   }
 }
 removeMatching(join(browserAgent, 'dist'), path => path.endsWith('.map') || path.endsWith('.d.ts'))
-removeMatching(destination, path => extname(path).toLowerCase() === '.md')
+removeMatching(destination, path => excludeMarkdown(relative(destination, path)))
+stageLauncherLicenses(launcher, destination)
 
 writeFileSync(join(destination, '.hh-clicker-bundle'), `version=${version}\nlayout=installer-v2\n${channel === 'nightly' ? 'channel=nightly\n' : ''}`)
 writeFileSync(join(destination, 'release-manifest.json'), JSON.stringify(release, null, 2) + '\n')

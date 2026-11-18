@@ -32,6 +32,32 @@ The launcher bundles Inter 4.1 Regular, SemiBold and Bold under the SIL Open Fon
 The license is shipped in Compose resources and is available in the repository at
 [inter_ofl.txt](shared/src/commonMain/composeResources/files/licenses/inter_ofl.txt).
 
+## Skiko 0.144.6
+
+The launcher includes Skiko with its native runtime. Skiko is licensed under Apache-2.0;
+the separate upstream NOTICE attributes code adapted from the Android Open Source Project.
+The unmodified [NOTICE](licenses/skiko-0.144.6/NOTICE) is included in application resources
+at the same relative path, in addition to the licenses already supplied in dependency JARs.
+Source: [Skiko v0.144.6 NOTICE](https://raw.githubusercontent.com/JetBrains/skiko/v0.144.6/NOTICE).
+
+## libffi in JNA 5.18.1
+
+JNA's native dispatch library includes libffi. Its copyright and permission notice are separate
+from JNA's own Apache-2.0/LGPL licensing. The unmodified [libffi LICENSE](licenses/jna-5.18.1/libffi-LICENSE)
+is included in application resources at the same relative path.
+Source: [libffi LICENSE shipped with JNA 5.18.1](https://raw.githubusercontent.com/java-native-access/jna/5.18.1/native/libffi/LICENSE).
+
+## Skia m144-22f58c9fd4
+
+Skiko 0.144.6 uses Skia `m144-22f58c9fd4` in its native runtime. The unmodified
+[Skia BSD license](licenses/skia-m144-22f58c9fd4/LICENSE), including Google's copyright,
+is included in application resources at the same relative path. It is separate from Skiko's
+Apache-2.0 license and AOSP NOTICE.
+Source: [Skia LICENSE at the pinned tag](https://raw.githubusercontent.com/JetBrains/skia/m144-22f58c9fd4/LICENSE).
+
+These notices cover the identified components; they are not a complete inventory of all native
+Skia or other transitive components. Recheck the notices when dependency versions change.
+
 ## Node.js runtime
 
 When no compatible system Node.js is available, the launcher downloads an unmodified official Node.js

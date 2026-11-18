@@ -182,6 +182,7 @@ private fun Sidebar(
             onNavigate(LauncherPage.SETTINGS)
         }
         Spacer(Modifier.weight(1f))
+        val updateAvailable = releaseUpdate.urgency != UpdateUrgency.NONE
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "Версия ${state.version.ifBlank { "—" }}",
@@ -189,33 +190,55 @@ private fun Sidebar(
                 color = LauncherColors.Muted,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            val iconColor = when (releaseUpdate.urgency) {
-                UpdateUrgency.CRITICAL -> LauncherColors.Red
-                UpdateUrgency.NORMAL -> LauncherColors.Primary
-                UpdateUrgency.NONE -> LauncherColors.Muted
-            }
-            Box(
-                Modifier.size(24.dp).clip(CircleShape).clickable { onOpenUrl(RELEASES_URL) },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (releaseUpdate.urgency == UpdateUrgency.CRITICAL) {
-                    Text("!", color = iconColor, fontWeight = FontWeight.Bold)
-                } else {
-                    TablerIcon(if (releaseUpdate.urgency == UpdateUrgency.NORMAL) Res.drawable.icon_refresh
-                        else Res.drawable.icon_external_link, iconColor, 17.dp)
+            if (!updateAvailable) {
+                Box(
+                    Modifier.size(24.dp).clip(CircleShape)
+                        .clickable(onClickLabel = "Открыть страницу релизов") { onOpenUrl(RELEASES_URL) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TablerIcon(Res.drawable.icon_external_link, LauncherColors.Muted, 17.dp)
                 }
             }
         }
-        if (releaseUpdate.urgency != UpdateUrgency.NONE) {
-            Text(
-                if (releaseUpdate.urgency == UpdateUrgency.CRITICAL)
-                    "Требуется обновление до ${releaseUpdate.latestVersion}"
-                else "Доступна версия ${releaseUpdate.latestVersion}",
-                color = if (releaseUpdate.urgency == UpdateUrgency.CRITICAL) LauncherColors.Red else LauncherColors.Primary,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 2,
-            )
+        if (updateAvailable) {
+            val critical = releaseUpdate.urgency == UpdateUrgency.CRITICAL
+            val accent = if (critical) LauncherColors.Red else LauncherColors.Primary
+            val interaction = remember { MutableInteractionSource() }
+            val hovered by interaction.collectIsHoveredAsState()
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp))
+                    .background(accent.copy(alpha = if (hovered) .14f else .08f))
+                    .hoverable(interaction)
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        onClickLabel = if (critical) "Критическое обновление до ${releaseUpdate.latestVersion}. Открыть страницу релизов"
+                            else "Открыть страницу релизов",
+                        onClick = { onOpenUrl(RELEASES_URL) },
+                    ).padding(horizontal = 8.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (critical) {
+                    Box(Modifier.size(16.dp).background(accent, CircleShape), contentAlignment = Alignment.Center) {
+                        Text("!", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                    }
+                } else {
+                    TablerIcon(Res.drawable.icon_refresh, accent, 16.dp)
+                }
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    "Обновить до ${releaseUpdate.latestVersion}",
+                    modifier = Modifier.weight(1f),
+                    color = accent,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
